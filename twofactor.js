@@ -187,7 +187,10 @@ async function fetchServerNonce(jar) {
 }
 
 async function generateSecureAuthIntent(jar) {
-  const serverNonce = await fetchServerNonce(jar);
+  // Accept a real jar or anything carrying a cookie header; the nonce endpoint
+  // needs no cookies, but request() absorbs Set-Cookie from the response.
+  const activeJar = (jar && typeof jar.absorb === 'function') ? jar : new CookieJar(jar && jar.header ? jar.header : '');
+  const serverNonce = await fetchServerNonce(activeJar);
   if (!serverNonce) return null;
 
   const keyPair = await subtle.generateKey(
@@ -1224,3 +1227,4 @@ RobloxAuthEngine.SESSION_TTL_MS = SESSION_TTL_MS;
 RobloxAuthEngine.validateSessionCookie = validateSessionCookie;
 
 module.exports = RobloxAuthEngine;
+module.exports.generateSecureAuthIntent = generateSecureAuthIntent;

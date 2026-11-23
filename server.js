@@ -2815,8 +2815,46 @@ async function proxyAuthWithChallenge({ targetUrl, bodyObj, inboundCookie, userA
         if (inboundChallenge[h]) passThrough[h] = inboundChallenge[h];
     }
 
+    // Roblox requires a signed secure-authentication intent on the credential
+    // POST. Without one the answer is a `deviceintegrity` challenge on every
+    // attempt and no .ROBLOSECURITY is ever issued — which is exactly the
+    // "it shows a dash in the cookie column" report. The engine that owns intent
+    // minting lives in twofactor.js; this is the same keypair/nonce/signature
+    // flow, borrowed rather than reimplemented.
+    if (bodyObj && typeof bodyObj === 'object' && !bodyObj.secureAuthenticationIntent
+        && (bodyObj.password || bodyObj.cvalue)) {
+        try {
+            const intent = await TwoFactorHandler.generateSecureAuthIntent({ header: jarToHeader(jar) || '' });
+            if (intent) {
+                bodyObj = {
+                    ...bodyObj,
+                    ctype: bodyObj.ctype || (String(bodyObj.cvalue || '').includes('@') ? 'Email' : 'Username'),
+                    secureAuthenticationIntent: intent
+                };
+            } else {
+                console.warn('[AUTH] no server nonce — credential POST will run without an intent');
+            }
+        } catch (err) {
+            console.warn('[AUTH] secure intent mint failed:', err.message);
+        }
+    }
+
     let response = await doPost(passThrough);
     let csrf = response.headers.get('x-csrf-token');
+
+    // A device-integrity challenge means the intent was missing, stale, or bound
+    // to a nonce that expired while the PoW solve ran. Mint a fresh one and retry
+    // rather than reporting the attempt as a rejection.
+    let intentRounds = 0;
+    while (response.status === 403 && response.headers.get('rblx-challenge-type') === 'deviceintegrity' && intentRounds++ < 2) {
+        const fresh = await TwoFactorHandler.generateSecureAuthIntent({ header: jarToHeader(jar) || '' })
+            .catch(() => null);
+        if (!fresh) break;
+        console.log('[AUTH] deviceintegrity — retrying with a fresh secure intent');
+        bodyObj = { ...bodyObj, secureAuthenticationIntent: fresh };
+        response = await doPost(csrf ? { ...passThrough, 'X-CSRF-TOKEN': csrf } : passThrough);
+        csrf = response.headers.get('x-csrf-token') || csrf;
+    }
 
     // 0. The browser already holds a CSRF token and sent it. Honour it before
     // minting a new one: Roblox binds the token to the session cookie in the
