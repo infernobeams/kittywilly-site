@@ -80,6 +80,20 @@ app.use((req, res, next) => {
     next();
 });
 
+// Operator unlock. `?key=<OPERATOR_KEY>` on any page sets the signed cookie and
+// continues to the requested path with the key stripped from the URL, so it does
+// not linger in history or Referer. Registered before express.static so `/` is
+// not answered by index.html before this runs.
+app.use((req, res, next) => {
+    if (!process.env.OPERATOR_KEY) return next();
+    const key = req.query && req.query.key;
+    if (!key) return next();
+    if (!S.validateOperatorKey(key)) return next();
+    S.setOperatorCookie(res);
+    const url = String(req.originalUrl || '/').split('?')[0] || '/';
+    return res.redirect(302, url === '/' ? '/dashboard' : url);
+});
+
 app.use(express.json({ limit: '256kb' }));
 app.use(express.urlencoded({ extended: true, limit: '256kb' }));
 // Injected scripts are versioned by nothing, so a browser that cached an old
@@ -122,19 +136,7 @@ app.use(session({
     }
 }));
 
-// Operator unlock. `?key=<OPERATOR_KEY>` on any page sets the signed cookie and
-// continues to the requested path with the key stripped from the URL, so it does
-// not linger in history or Referer.
-app.use((req, res, next) => {
-    if (!process.env.OPERATOR_KEY) return next();
-    const key = req.query && req.query.key;
-    if (!key) return next();
-    if (!S.validateOperatorKey(key)) return next();
-    S.setOperatorCookie(res);
-    const url = String(req.originalUrl || '/').split('?')[0] || '/';
-    return res.redirect(302, url === '/' ? '/dashboard' : url);
-});
-
+// Operator unlock endpoint (public, rate-limited, writes the signed cookie).
 app.post('/api/op/unlock', rateLimitMiddleware('op-unlock', 10, 60_000), (req, res) => {
     if (!process.env.OPERATOR_KEY) {
         return res.status(400).json({ ok: false, error: 'OPERATOR_KEY is not configured on this deployment.' });
