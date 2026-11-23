@@ -4525,6 +4525,7 @@ app.get('/healthz', async (req, res) => {
         snapshotAgeMs: cacheAgeMs,
         snapshotStale: cacheAgeMs === null || cacheAgeMs > 90_000,
         warmIntervalMs: WARM_INTERVAL_MS,
+        store: store.MODE,
         upstreamAllowlistSize: S.ALLOWED_UPSTREAM_HOSTS.size,
         upstreamSuffixes: S.ALLOWED_UPSTREAM_SUFFIXES
     });
