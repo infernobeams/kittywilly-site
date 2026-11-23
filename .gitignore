@@ -25,3 +25,7 @@ scratch/login_body.json
 scratch/proxy_body.txt
 account-panel/out/
 account-panel/mock_accounts.db
+
+# Operator key never belongs in git
+scratch/operator-key.txt
+scratch/*.key
