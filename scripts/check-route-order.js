@@ -14,8 +14,7 @@ const GATE = "app.use('/api', apiGuard)";
 
 // Registered above the gate on purpose. Keep this list short and justified.
 const ALLOWED_ABOVE_GATE = new Set([
-    "app.get('/api/user'",
-    "app.post('/api/op/unlock'"
+    "app.get('/api/user'"
 ]);
 
 const source = fs.readFileSync(FILE, 'utf8').split('\n');

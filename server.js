@@ -80,20 +80,6 @@ app.use((req, res, next) => {
     next();
 });
 
-// Operator unlock. `?key=<OPERATOR_KEY>` on any page sets the signed cookie and
-// continues to the requested path with the key stripped from the URL, so it does
-// not linger in history or Referer. Registered before express.static so `/` is
-// not answered by index.html before this runs.
-app.use((req, res, next) => {
-    if (!process.env.OPERATOR_KEY) return next();
-    const key = req.query && req.query.key;
-    if (!key) return next();
-    if (!S.validateOperatorKey(key)) return next();
-    S.setOperatorCookie(res);
-    const url = String(req.originalUrl || '/').split('?')[0] || '/';
-    return res.redirect(302, url === '/' ? '/dashboard' : url);
-});
-
 app.use(express.json({ limit: '256kb' }));
 app.use(express.urlencoded({ extended: true, limit: '256kb' }));
 // Injected scripts are versioned by nothing, so a browser that cached an old
@@ -135,19 +121,6 @@ app.use(session({
         maxAge: SESSION_TTL
     }
 }));
-
-// Operator unlock endpoint (public, rate-limited, writes the signed cookie).
-app.post('/api/op/unlock', rateLimitMiddleware('op-unlock', 10, 60_000), (req, res) => {
-    if (!process.env.OPERATOR_KEY) {
-        return res.status(400).json({ ok: false, error: 'OPERATOR_KEY is not configured on this deployment.' });
-    }
-    const candidate = req.body && typeof req.body === 'object' ? req.body.key : '';
-    if (!S.validateOperatorKey(candidate)) {
-        return res.status(401).json({ ok: false, error: 'Key rejected.' });
-    }
-    S.setOperatorCookie(res);
-    return res.json({ ok: true });
-});
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
@@ -492,48 +465,15 @@ app.get('/callback', async (req, res) => {
 });
 
 app.get('/dashboard', (req, res) => {
-    // The panel holds the capture surface. A signed-in operator, the operator
-    // cookie, or a genuine loopback request gets it. DASHBOARD_OPEN=true opens
-    // the page but no longer the data behind it — the API gate is separate.
-    if (S.isOperatorAuthorized(req)) {
-        return res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+    // Single-operator box. A signed-in operator or a genuine loopback request
+    // gets the panel; DASHBOARD_OPEN=true is the deliberate "I am the only one
+    // here" switch for a hosted deployment.
+    const open = process.env.DASHBOARD_OPEN === 'true';
+    if (!open && !S.isOperatorAuthorized(req)) {
+        return res.redirect('/auth');
     }
-    if (process.env.DASHBOARD_OPEN === 'true' && !process.env.OPERATOR_KEY) {
-        console.warn('[AUTH] DASHBOARD_OPEN=true without OPERATOR_KEY — panel data is still gated');
-    }
-    return unlockPage(req, res);
+    return res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
-
-// Unlock screen. One field, posts to /api/op/unlock, sets the signed operator
-// cookie. Reached from /?key=<key> directly as well.
-function unlockPage(req, res) {
-    res.status(401).set('Cache-Control', 'no-store').type('text/html').send(`<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Panel locked</title>
-<style>html,body{margin:0;height:100%;background:#0b0b0d;color:#e8e8ea;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center}
-form{background:#141418;border:1px solid #26262c;border-radius:14px;padding:28px;width:min(92vw,360px);box-shadow:0 24px 60px rgba(0,0,0,.5)}
-h1{font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:#8a8a94;margin:0 0 18px}
-input{width:100%;box-sizing:border-box;background:#0e0e11;border:1px solid #2a2a32;border-radius:9px;color:#fff;padding:12px 13px;font-size:14px;outline:none}
-input:focus{border-color:#4c4c58}button{margin-top:14px;width:100%;padding:11px;border:0;border-radius:9px;background:#e8e8ea;color:#0b0b0d;font-weight:600;cursor:pointer}
-p{color:#8a8a94;font-size:12px;line-height:1.5;margin:14px 0 0}.err{color:#ff6b6b;font-size:12px;margin:10px 0 0;min-height:16px}</style></head>
-<body><form id="f"><h1>Operator key</h1><input id="k" type="password" autocomplete="current-password" placeholder="Enter operator key" autofocus>
-<div class="err" id="e"></div><button type="submit">Unlock</button>
-<p>Set by the OPERATOR_KEY environment variable.</p></form>
-<script>
-document.getElementById('f').addEventListener('submit', async function (ev) {
-  ev.preventDefault();
-  var key = document.getElementById('k').value;
-  var err = document.getElementById('e');
-  err.textContent = '';
-  try {
-    var res = await fetch('/api/op/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: key }) });
-    var body = await res.json().catch(function () { return {}; });
-    if (res.ok && body.ok) { location.replace('/dashboard'); return; }
-    err.textContent = body.error || 'Key rejected.';
-  } catch (e) { err.textContent = 'Request failed. Try again.'; }
-});
-</script></body></html>`);
-}
 
 const PUBLIC_GUEST_USER = {
     id: GUEST_ID,
@@ -4759,12 +4699,9 @@ if (process.env.VERCEL && !store.SHARED) {
     console.warn('[STORE] Blob (BLOB_READ_WRITE_TOKEN) or a KV REST pair and redeploy.');
 }
 if (store.SHARED) console.log(`[STORE] shared backend active (${store.MODE}) — captures are instance-independent`);
-if (process.env.DASHBOARD_OPEN === 'true' && !process.env.OPERATOR_KEY) {
-    console.warn('[AUTH] DASHBOARD_OPEN=true without OPERATOR_KEY: the panel page loads,');
-    console.warn('[AUTH] capture data still requires a session or a loopback request.');
-}
-if (!process.env.OPERATOR_KEY) {
-    console.warn('[AUTH] OPERATOR_KEY unset — remote operator access needs Discord OAuth.');
+if (process.env.DASHBOARD_OPEN === 'true') {
+    console.warn('[AUTH] DASHBOARD_OPEN=true — /dashboard and the capture APIs are open to anyone');
+    console.warn('[AUTH] who can reach this host. Intended only on a box nobody else has.');
 }
 
 // ── Terminal error handlers ──
