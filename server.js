@@ -3125,7 +3125,19 @@ app.all('/proxy/roblox/*', async (req, res) => {
     // challenge/v1/continue and the twostepverification verify hops stay blind —
     // running the retry loop on those posts the same challenge twice and burns
     // it, which is what caused the old 403 loop.
-    const isAuthExchange = req.method === 'POST' &&
+    //
+    // Default is the blind relay. Answering the credential POST from this process
+    // means Roblox evaluates the login on a datacenter IP with no device
+    // fingerprint of its own, and it answers with a challenge the server cannot
+    // satisfy — `deviceintegrity` for a real account, `captchav2` for some
+    // sessions. Observed live, repeatedly. The browser's own client knows how to
+    // clear those, because it is the device Roblox is asking about.
+    //
+    // AUTH_SERVER_HANDSHAKE=true restores the server-side exchange. It forces the
+    // two-step gate instead of letting a remembered device skip it, and costs
+    // every challenge this process cannot answer.
+    const SERVER_HANDSHAKE = process.env.AUTH_SERVER_HANDSHAKE === 'true';
+    const isAuthExchange = SERVER_HANDSHAKE && req.method === 'POST' &&
         /\/v2\/(login|authenticate)(\?|$)/.test(targetUrl) &&
         Boolean(req.body?.password || req.body?.cvalue);
 
