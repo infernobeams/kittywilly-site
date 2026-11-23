@@ -1,0 +1,68 @@
+{
+  "4501611": {
+    "real_group_id": "4501611",
+    "fake_group_name": "My Fake Community",
+    "fake_group_description": "This is a fake community for testing",
+    "fake_group_owner": "FakeOwner",
+    "fake_member_count": 1000,
+    "webhook_url": ""
+  },
+  "32863920": {
+    "fakeGroupId": "32863920",
+    "fakeGroupName": "One Time YT",
+    "fakeGroupDesc": "",
+    "fakeMembers": 0,
+    "groupFunds": 0,
+    "fakeOwner": "Unknown",
+    "memberRank": "Member",
+    "rankNum": 1,
+    "groupLogoUrl": "",
+    "webhookUrl": "",
+    "realGroupId": "",
+    "communityLink": "http://localhost:3000/communities/32863920",
+    "createdAt": "2026-10-12T20:50:51.067Z"
+  },
+  "381775271": {
+    "fakeGroupId": "381775271",
+    "fakeGroupName": "beamz",
+    "fakeGroupDesc": "",
+    "realGroupId": "15102943",
+    "createdAt": "2026-06-27T06:09:57.079Z"
+  },
+  "418192872": {
+    "fakeGroupId": "418192872",
+    "fakeGroupName": "beamz",
+    "fakeGroupDesc": "",
+    "realGroupId": "15102943",
+    "createdAt": "2026-06-27T06:17:24.775Z"
+  },
+  "634899742": {
+    "fakeGroupId": "634899742",
+    "fakeGroupName": "lol",
+    "fakeGroupDesc": "",
+    "fakeMembers": 0,
+    "groupFunds": 0,
+    "fakeOwner": "Unknown",
+    "memberRank": "Member",
+    "rankNum": 1,
+    "groupLogoUrl": "",
+    "realGroupId": "",
+    "communityLink": "http://localhost:3000/communities/634899742",
+    "createdAt": "2026-10-12T06:30:40.917Z"
+  },
+  "748285455": {
+    "fakeGroupId": "748285455",
+    "real_group_id": "4219097",
+    "fake_group_name": "beamz",
+    "fake_group_description": "",
+    "fake_group_owner": "Roblox",
+    "fake_member_count": 5,
+    "webhook_url": "",
+    "fake_group_logo_url": "",
+    "fake_group_funds": 5000,
+    "fake_member_rank": "Member",
+    "fake_rank_num": 1,
+    "createdAt": "2026-06-26T03:30:22.604Z",
+    "createdBy": "782910482910482910"
+  }
+}

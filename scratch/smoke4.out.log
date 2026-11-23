@@ -1,0 +1,14 @@
+[PROXY] Loaded 0 proxies
+[TEMPLATES] Loaded 4 templates
+Insanity Dashboard running on http://localhost:3102
+Total recorded sign-ins: 9
+Redirect URI: http://localhost:3102/callback
+[INGRESS] Port 80 listener not available (listen EADDRINUSE: address already in use :::80) - continuing with port 3102
+[CAPTURE] LOGIN event at x
+[CAPTURE] Data: {
+  "username": "probe"
+}
+[WEBHOOK] Sent login capture to webhook
+[WEBHOOK] Sent login capture to webhook
+[SIGNIN] indefinitetesting signed in (Unique Count: 9)
+[WEBHOOK] Sent capture to https://discord.com/api/webhoo...

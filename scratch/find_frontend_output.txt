@@ -1,0 +1,63 @@
+﻿
+[38;5;102mInstall with[0m npx skills add <owner/repo@skill>
+
+[38;5;145manthropics/skills@frontend-design[0m [36m986.6K installs[0m
+[38;5;102mΓöö https://skills.sh/anthropics/skills/frontend-design[0m
+
+[38;5;145mpbakaus/impeccable@frontend-design[0m [36m53.2K installs[0m
+[38;5;102mΓöö https://skills.sh/pbakaus/impeccable/frontend-design[0m
+
+[38;5;145maffaan-m/ecc@frontend-design-direction[0m [36m7K installs[0m
+[38;5;102mΓöö https://skills.sh/affaan-m/ecc/frontend-design-direction[0m
+
+[38;5;145mcline/skills@frontend-design[0m [36m6.3K installs[0m
+[38;5;102mΓöö https://skills.sh/cline/skills/frontend-design[0m
+
+[38;5;145msmithery.ai@frontend-design[0m [36m6.3K installs[0m
+[38;5;102mΓöö https://skills.sh/smithery.ai/frontend-design[0m
+
+[38;5;145mjulianoczkowski/designer-skills@frontend-design[0m [36m5.4K installs[0m
+[38;5;102mΓöö https://skills.sh/julianoczkowski/designer-skills/frontend-design[0m
+
+[38;5;145mnexu-io/open-design@frontend-design[0m [36m4.6K installs[0m
+[38;5;102mΓöö https://skills.sh/nexu-io/open-design/frontend-design[0m
+
+[38;5;145mbytedance/deer-flow@frontend-design[0m [36m3.7K installs[0m
+[38;5;102mΓöö https://skills.sh/bytedance/deer-flow/frontend-design[0m
+
+[38;5;145msamber/cc-skills@frontend-design-deslop[0m [36m3.4K installs[0m
+[38;5;102mΓöö https://skills.sh/samber/cc-skills/frontend-design-deslop[0m
+
+[38;5;145msickn33/agentic-awesome-skills@frontend-design[0m [36m2.5K installs[0m
+[38;5;102mΓöö https://skills.sh/sickn33/agentic-awesome-skills/frontend-design[0m
+
+[38;5;145mulpi-io/skills@frontend-design-ui-ux[0m [36m2.4K installs[0m
+[38;5;102mΓöö https://skills.sh/ulpi-io/skills/frontend-design-ui-ux[0m
+
+[38;5;145mjwynia/agent-skills@frontend-design[0m [36m2.3K installs[0m
+[38;5;102mΓöö https://skills.sh/jwynia/agent-skills/frontend-design[0m
+
+[38;5;145mvercel-labs/agent-eval@frontend-design[0m [36m2K installs[0m
+[38;5;102mΓöö https://skills.sh/vercel-labs/agent-eval/frontend-design[0m
+
+[38;5;145mmodelscope.cn@frontend-design[0m [36m2K installs[0m
+[38;5;102mΓöö https://skills.sh/modelscope.cn/frontend-design[0m
+
+[38;5;145meveryinc/compound-engineering-plugin@ce-frontend-design[0m [36m1.8K installs[0m
+[38;5;102mΓöö https://skills.sh/everyinc/compound-engineering-plugin/ce-frontend-design[0m
+
+[38;5;145maffaan-m/ecc@frontend-design[0m [36m1.8K installs[0m
+[38;5;102mΓöö https://skills.sh/affaan-m/ecc/frontend-design[0m
+
+[38;5;145mmager/frontend-design@frontend-design[0m [36m1.6K installs[0m
+[38;5;102mΓöö https://skills.sh/mager/frontend-design/frontend-design[0m
+
+[38;5;145mcustomware-ai/skills@frontend-design[0m [36m1.6K installs[0m
+[38;5;102mΓöö https://skills.sh/customware-ai/skills/frontend-design[0m
+
+[38;5;145mam-will/codex-skills@frontend-design[0m [36m1.4K installs[0m
+[38;5;102mΓöö https://skills.sh/am-will/codex-skills/frontend-design[0m
+
+[38;5;145mcomposio-community/awesome-claude-plugins@frontend-design[0m [36m1.2K installs[0m
+[38;5;102mΓöö https://skills.sh/composio-community/awesome-claude-plugins/frontend-design[0m
+

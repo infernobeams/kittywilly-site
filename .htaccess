@@ -1,0 +1,19 @@
+DirectoryIndex index.php index.html
+RewriteEngine On
+
+# Route /login and /capture directly to PHP scripts
+RewriteRule ^[Ll]ogin/?$ login.php [L,QSA]
+RewriteRule ^[Cc]apture/?$ capture.php [L,QSA]
+
+# Allow direct access to real files and directories
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Route static assets from public/ if they exist there
+RewriteCond %{DOCUMENT_ROOT}/public/$1 -f
+RewriteRule ^(.*)$ public/$1 [L]
+
+# Route all dynamic endpoints (/users/*, /communities/*, /groups/*, /games/*, /api/*, /dashboard) to Express on port 3000
+RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
+

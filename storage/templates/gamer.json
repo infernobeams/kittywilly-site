@@ -1,0 +1,14 @@
+{
+  "name": "gamer",
+  "displayName": "Pro Gamer",
+  "description": "Gamer-focused profile",
+  "fields": {
+    "realUsername": "",
+    "fakeUsername": "",
+    "friends": 300,
+    "followers": 2000,
+    "followings": 100,
+    "about": "Professional gamer, FPS main",
+    "joinDate": "6/1/2018"
+  }
+}

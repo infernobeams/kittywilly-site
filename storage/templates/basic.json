@@ -1,0 +1,14 @@
+{
+  "name": "basic",
+  "displayName": "Basic Profile",
+  "description": "Simple profile with basic stats",
+  "fields": {
+    "realUsername": "",
+    "fakeUsername": "",
+    "friends": 100,
+    "followers": 500,
+    "followings": 50,
+    "about": "New to Roblox!",
+    "joinDate": "1/1/2020"
+  }
+}

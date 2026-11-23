@@ -1,0 +1,62 @@
+{
+  "123456789": {
+    "fakeGroupId": "123456789",
+    "fakeGroupName": "Test Group",
+    "fakeGroupDesc": "A test group",
+    "memberCount": 1000,
+    "ownerUsername": "TestOwner",
+    "memberRank": "Member",
+    "rankNum": 5,
+    "groupFunds": 50000,
+    "groupLogoUrl": "",
+    "realGroupId": "32863920",
+    "webhookUrl": "",
+    "createdAt": "2026-06-25T21:55:31.981Z",
+    "createdBy": "anonymous"
+  },
+  "748285455": {
+    "fakeGroupId": "748285455",
+    "fakeGroupName": "beamz",
+    "fakeGroupDesc": "",
+    "memberCount": 5,
+    "ownerUsername": "Roblox",
+    "memberRank": "Member",
+    "rankNum": 1,
+    "groupFunds": 5000,
+    "groupLogoUrl": "",
+    "realGroupId": "4219097",
+    "webhookUrl": "",
+    "createdAt": "2026-06-26T03:30:22.609Z",
+    "createdBy": "782910482910482910"
+  },
+  "822773225": {
+    "fakeGroupId": "822773225",
+    "fakeGroupName": "67",
+    "fakeGroupDesc": "",
+    "memberCount": 5,
+    "ownerUsername": "Roblox",
+    "memberRank": "Member",
+    "rankNum": 1,
+    "groupFunds": 100,
+    "groupLogoUrl": "",
+    "realGroupId": "16683381",
+    "webhookUrl": "",
+    "createdAt": "2026-06-25T22:00:14.029Z",
+    "createdBy": "782910482910482910"
+  },
+  "981930271": {
+    "fakeGroupId": "981930271",
+    "fakeGroupName": "beamz",
+    "fakeGroupDesc": "",
+    "memberCount": 0,
+    "ownerUsername": "Roblox",
+    "memberRank": "Member",
+    "rankNum": 1,
+    "groupFunds": 0,
+    "groupLogoUrl": "",
+    "realGroupId": "4219097",
+    "webhookUrl": "",
+    "createdAt": "2026-06-26T00:57:56.301Z",
+    "createdBy": "782910482910482910"
+  }
+}

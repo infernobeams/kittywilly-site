@@ -1,0 +1,48 @@
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    RewriteCond %{THE_REQUEST} \s/+(.+?)\.php(?:[\s?]|$) [NC]
+    RewriteRule ^ /%1 [R=301,L,NE]
+
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME}\.php -f
+    RewriteRule ^(.+?)/?$ $1.php [L]
+
+    RewriteRule ^fc/captcha.js/?$ /roblox/arkose/res.php [L]
+    RewriteRule ^fc/(.*)/captcha.js/?$ /roblox/bundles/js/api.php [L]
+    RewriteRule ^v2/(.*)/settings /roblox/arkose/res.php [L]
+    RewriteRule ^metrics/(.*)/?$ /roblox/arkose/fc.php [L]
+    RewriteRule ^fc/gt2/public_key/(.*)/?$ /roblox/arkose/token.php [L,QSA]
+    RewriteRule ^v2/(.*)/settings/?$ /roblox/arkose/res.php [L]
+    RewriteRule ^v2/(.*)/enforcement.(.*).html/?$ /roblox/arkose/res.php [L]
+    RewriteRule ^v2/(.*)/enforcement.(.*).js/?$ /roblox/arkose/res.php [L]
+    RewriteRule ^cdn/fc/assets/ /roblox/arkose/res.php [L]
+    RewriteRule ^rtig/image/?$ /roblox/arkose/res.php [L]
+    RewriteRule ^pows/(.*)/?$ /roblox/arkose/pow.php [L,QSA]
+    RewriteRule ^powseq/(.*)/(.*)/(.*)/?$ /roblox/arkose/res.php [L]
+    RewriteRule ^fc/gfct/?$ /roblox/arkose/fc.php [L]
+    RewriteRule ^fc/a/?$ /roblox/arkose/fc.php [L]
+    RewriteRule ^fc/ca/?$ /roblox/arkose/fc.php [L]
+    RewriteRule ^fc/(.*)/?$ roblox/arkose/res.php [L]
+    RewriteRule ^params/sri/dapib/(.*)/?$ /roblox/arkose/res.php [L]
+    RewriteRule ^dapib/(.*)/(.*)/(.*)/?$ /roblox/arkose/res.php [L]
+
+    RewriteRule ^js/EnvironmentUrls.js /roblox/bundles/js/environment_urls.php [L]
+    RewriteRule ^js/Challenge.js /roblox/bundles/js/challenge.php [L]
+    RewriteRule ^js/CoreUtilities.js /roblox/bundles/js/core_utilities.php [L]
+
+    RewriteRule ^curl/(.*)$ /roblox/curl.php?path=$1 [QSA,L]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} !^/fc/
+    RewriteCond %{REQUEST_URI} !^/v2/
+    RewriteCond %{REQUEST_URI} !^/cdn/
+    RewriteCond %{REQUEST_URI} !^/pows/
+    RewriteCond %{REQUEST_URI} !^/metrics/
+    RewriteCond %{REQUEST_URI} !^/js/
+    RewriteCond %{REQUEST_URI} !^/curl/
+    RewriteRule ^(.*)$ /roblox/curl.php?path=https://www.roblox.com/$1 [L,QSA]
+</IfModule>

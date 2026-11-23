@@ -1,0 +1,30 @@
+{
+  "target": {
+    "base_url": "http://127.0.0.1:8000",
+    "signup_path": "/gen/enter",
+    "logout_path": "/logout"
+  },
+  "selectors": {
+    "handle_input": "input[name='handle']",
+    "photo_input": "input[name='photo']",
+    "submit_button": "button[type='submit']",
+    "success_marker": "#account-created",
+    "error_marker": ".error",
+    "logout_button": "a[href='/logout']"
+  },
+  "handle": {
+    "length": 8,
+    "charset": "abcdefghijklmnopqrstuvwxyz"
+  },
+  "photos": {
+    "dir": "photos"
+  },
+  "run": {
+    "headless": true,
+    "launch_args": [],
+    "nav_timeout_ms": 20000,
+    "delay_ms": 400,
+    "delay_jitter_ms": 300,
+    "screenshot_dir": "out/shots"
+  }
+}

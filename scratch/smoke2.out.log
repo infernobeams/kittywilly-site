@@ -1,0 +1,6 @@
+[PROXY] Loaded 0 proxies
+[TEMPLATES] Loaded 4 templates
+Insanity Dashboard running on http://localhost:3100
+Total recorded sign-ins: 9
+Redirect URI: http://localhost:3100/callback
+[INGRESS] Port 80 listener not available (listen EADDRINUSE: address already in use :::80) - continuing with port 3100

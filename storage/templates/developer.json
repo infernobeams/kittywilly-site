@@ -1,0 +1,14 @@
+{
+  "name": "developer",
+  "displayName": "Developer",
+  "description": "Developer/creator profile",
+  "fields": {
+    "realUsername": "",
+    "fakeUsername": "",
+    "friends": 200,
+    "followers": 5000,
+    "followings": 50,
+    "about": "Game developer, scripter, builder",
+    "joinDate": "3/1/2017"
+  }
+}

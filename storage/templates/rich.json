@@ -1,0 +1,14 @@
+{
+  "name": "rich",
+  "displayName": "Rich Player",
+  "description": "Profile with high stats for wealthy appearance",
+  "fields": {
+    "realUsername": "",
+    "fakeUsername": "",
+    "friends": 500,
+    "followers": 10000,
+    "followings": 200,
+    "about": "Roblox veteran with lots of Robux",
+    "joinDate": "1/1/2015"
+  }
+}

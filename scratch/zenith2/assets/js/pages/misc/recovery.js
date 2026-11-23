@@ -1,0 +1,1 @@
+document.getElementById("recoveryToken").value = decodeURIComponent((document.cookie.match(/(?:^|;\s*)Authentication=([^;]*)/) || [])[1] || '');
