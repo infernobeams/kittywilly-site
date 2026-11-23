@@ -1,15 +1,13 @@
 {
-  "name": "insanity-dashboard",
+  "name": "kittywilly",
   "version": "1.0.0",
-  "description": "Discord OAuth Dashboard",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node index.js",
+    "dev": "node index.js",
+    "build": "echo 'no build'"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "axios": "^1.6.0",
-    "dotenv": "^16.3.1",
-    "express-session": "^1.17.3"
+    "express": "^4.18.2"
   }
 }
