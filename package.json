@@ -8,6 +8,9 @@
     "build": "echo 'no build'"
   },
   "dependencies": {
-    "express": "^4.18.2"
+    "axios": "^1.18.1",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "express-session": "^1.19.0"
   }
 }

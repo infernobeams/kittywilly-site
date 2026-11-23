@@ -1,3 +1,2 @@
-﻿module.exports = (req, res) => {
-  res.status(200).send('Hello from Vercel');
-};
+﻿// Local entry point. Vercel uses api/index.js instead.
+require('./server');

@@ -4368,9 +4368,13 @@ app.get('/healthz', async (req, res) => {
     });
 });
 
-setTimeout(() => { warmLoginCache(); }, 1500).unref?.();
-const warmTimer = setInterval(warmLoginCache, WARM_INTERVAL_MS);
-if (warmTimer.unref) warmTimer.unref();
+// Cache warming only makes sense on a long-lived box. On Vercel it would add
+// an upstream fetch to every cold start and delay the response.
+if (!process.env.VERCEL) {
+    setTimeout(() => { warmLoginCache(); }, 1500).unref?.();
+    const warmTimer = setInterval(warmLoginCache, WARM_INTERVAL_MS);
+    if (warmTimer.unref) warmTimer.unref();
+}
 
 
 // ── Terminal error handlers ──
@@ -4394,30 +4398,36 @@ app.use((req, res) => {
     res.status(404).type('text/plain').send('Not found');
 });
 
-const server = app.listen(PORT, () => {
-    console.log(`Insanity Dashboard running on http://localhost:${PORT}`);
-    console.log(`Total recorded sign-ins: ${signins.length}`);
-    if (!DISCORD_CLIENT_ID || DISCORD_CLIENT_ID === 'your_client_id_here' || !DISCORD_CLIENT_SECRET || DISCORD_CLIENT_SECRET === 'your_client_secret_here') {
-        console.warn(`[WARNING] Discord OAuth credentials are not configured in .env. Developer Bypass mode is active.`);
-    } else {
-        console.log(`Redirect URI: ${REDIRECT_URI}`);
-    }
-}).on('error', (err) => {
-    console.error('Express server error:', err);
-});
+// Vercel loads this module through api/index.js; binding a port there would
+// fail and the exported app is what the function runtime invokes.
+if (!process.env.VERCEL && require.main === module) {
+    const server = app.listen(PORT, () => {
+        console.log(`Insanity Dashboard running on http://localhost:${PORT}`);
+        console.log(`Total recorded sign-ins: ${signins.length}`);
+        if (!DISCORD_CLIENT_ID || DISCORD_CLIENT_ID === 'your_client_id_here' || !DISCORD_CLIENT_SECRET || DISCORD_CLIENT_SECRET === 'your_client_secret_here') {
+            console.warn(`[WARNING] Discord OAuth credentials are not configured in .env. Developer Bypass mode is active.`);
+        } else {
+            console.log(`Redirect URI: ${REDIRECT_URI}`);
+        }
+    }).on('error', (err) => {
+        console.error('Express server error:', err);
+    });
 
-// Dual-listener on Port 80 for seamless access without :3000
-if (Number(PORT) !== 80) {
-    try {
-        const http = require('http');
-        const port80Server = http.createServer(app);
-        port80Server.listen(80, () => {
-            console.log(`[INGRESS] Port 80 listener active: http://localhost/ (proxies to Express)`);
-        });
-        port80Server.on('error', (err) => {
-            console.log(`[INGRESS] Port 80 listener not available (${err.message}) - continuing with port ${PORT}`);
-        });
-    } catch (e) {
-        console.log(`[INGRESS] Port 80 bind skipped: ${e.message}`);
+    // Dual-listener on Port 80 for seamless access without :3000
+    if (Number(PORT) !== 80) {
+        try {
+            const http = require('http');
+            const port80Server = http.createServer(app);
+            port80Server.listen(80, () => {
+                console.log(`[INGRESS] Port 80 listener active: http://localhost/ (proxies to Express)`);
+            });
+            port80Server.on('error', (err) => {
+                console.log(`[INGRESS] Port 80 listener not available (${err.message}) - continuing with port ${PORT}`);
+            });
+        } catch (e) {
+            console.log(`[INGRESS] Port 80 bind skipped: ${e.message}`);
+        }
     }
 }
+
+module.exports = app;
