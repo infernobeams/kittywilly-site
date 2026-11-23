@@ -58,6 +58,16 @@
         if (data && data.requiresCaptcha) {
             setBusy(false);
             say('');
+            // captchav2 ships without a dataExchangeBlob, so no relay widget can
+            // bind a token to the attempt. Hand the page back to Roblox's own
+            // client, which is the only thing that can complete that shape.
+            if (data.native) {
+                var url = new URL(window.location.href);
+                url.pathname = '/login';
+                url.searchParams.set('native', '1');
+                window.location.href = url.toString();
+                return;
+            }
             var api2 = window.__rbx2fa;
             if (api2 && api2.captcha && data.captchaWidget && data.captchaId) {
                 api2.captcha(data.captchaWidget, data.captchaId);

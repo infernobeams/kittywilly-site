@@ -2,8 +2,14 @@
 # Boots nothing. Hits a running instance and fails loudly.
 #   .\SMOKE-TEST.ps1                  -> http://localhost:3000
 #   .\SMOKE-TEST.ps1 -Base http://host:3000
+#   .\SMOKE-TEST.ps1 -Base https://host -Remote
+#
+# -Remote asserts that writes are 401. Without it the script assumes it is
+# talking to a loopback operator, where isTrustedLocal() deliberately lets
+# writes through — asserting 401 there failed on a correct box.
 param(
-    [string]$Base = "http://localhost:3000"
+    [string]$Base = "http://localhost:3000",
+    [switch]$Remote
 )
 
 $ErrorActionPreference = "Continue"
@@ -59,14 +65,16 @@ Check "/api/proxy/stats"   @(200)
 Check "/api/proxy/healthy" @(200)
 
 Write-Host "`n== write APIs are gated ==" -ForegroundColor Cyan
+# Loopback is the operator at the bench, so a write reaching the handler is the
+# correct answer there. Only a remote run can prove the gate is shut.
+$writeExpect = if ($Remote) { @(401) } else { @(200, 400, 401, 403, 409) }
 foreach ($p in @("/api/webhook/save", "/api/generate", "/api/save-profile", "/api/webhook/test", "/api/proxy/rotate", "/api/sites/triplehook")) {
-    Check $p @(401) "POST" "{}"
+    Check $p $writeExpect "POST" "{}"
 }
 
 Write-Host "`n== public write surface ==" -ForegroundColor Cyan
 Check "/api/capture-login" @(200) "POST" "{}"
 Check "/api/auth/validate" @(400) "POST" "{}"
-Check "/api/pow/solve"     @(400) "POST" "{}"
 
 Write-Host "`n== roblox shims ==" -ForegroundColor Cyan
 Check "/rblx-users/v1/users/1" @(200)

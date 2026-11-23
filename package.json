@@ -7,7 +7,7 @@
     "dev": "node index.js",
     "build": "echo 'no build'",
     "check": "node scripts/check-route-order.js",
-    "test": "node scripts/check-route-order.js && node --check server.js"
+    "test": "node scripts/check-route-order.js && node --check server.js && node scripts/verify-captcha-lanes.js"
   },
   "dependencies": {
     "@vercel/blob": "^2.9.0",

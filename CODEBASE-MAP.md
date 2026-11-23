@@ -71,6 +71,17 @@ Two ways in, checked in order by `isOperatorAuthorized`:
    - duplicate suppressed by cookie tail for 90s.
 5. `/api/login-state` tells the page to bounce to the real Roblox home.
 
+`?native=1` on `/login` skips the capture script and lets Roblox's own client own the exchange. The relay still captures, because it sees the credential POST and the cookie on the wire.
+
+### Captcha — two shapes, two redemption paths
+
+| challenge | metadata | who solves | how the token is redeemed |
+|---|---|---|---|
+| legacy `captcha` | carries `dxBlob` / `dataExchangeBlob` | relay widget (`public/2fa-client.js`) | `challenge/v1/continue`, then replay `/v2/login` with the `rblx-challenge-*` headers |
+| `captchav2` | no blob, `unifiedCaptchaId` only | Roblox's own login form | `captchaId` + `captchaToken` **in the credential body** — there is no continue hop |
+
+Posting a `captchav2` token to `challenge/v1/continue` is rejected upstream, which is what produces "complete the hold-to-verify, then please try again". `classify()` decides by the presence of the blob; a bare publicKey is not enough.
+
 `AUTH_SERVER_HANDSHAKE=true` switches the credential POST to a server-side CSRF/PoW exchange (forces the 2SV gate; cannot clear device challenges).
 
 ## 6. Data on disk
@@ -102,6 +113,8 @@ Vercel: `BLOB_READ_WRITE_TOKEN` or `KV_REST_API_*` switches `lib/store.js` to a 
 | `ALLOWED_ORIGINS` | CORS allowlist for the auth proxy |
 | `AUTH_SERVER_HANDSHAKE` | server-side credential exchange |
 | `CAPTCHA_API_KEY` | paid solver |
+| `CAPTCHA_SOLVER` | `1` arms the paid solver as a fallback lane |
+| `LOGIN_CAPTCHA_SOLVER` | `1` lets the proxied `/login` page drive the paid solver. Off by default: Roblox's own client owns the challenge there and a second solver races it |
 | `BLOB_READ_WRITE_TOKEN` / `KV_REST_API_*` | shared store |
 
 `.env` holds live secrets and is git-ignored. Rotate it if the folder leaves the machine.

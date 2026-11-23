@@ -12,6 +12,9 @@ visits.json
 signins.json
 sessions.json
 login_log.txt
+# Operator config. A Discord webhook URL is a credential: anyone holding it can
+# post to the channel. The file is a runtime store, not source.
+webhooks.json
 .cache/
 storage/logs/
 storage/proxies.txt

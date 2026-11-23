@@ -93,6 +93,14 @@ class CaptchaRelay {
       challengeType: challengeType || 'captcha',
       unifiedCaptchaId: meta.unifiedCaptchaId || null,
       actionType: meta.actionType || 'Login',
+      // Kept on the session because it decides how the token is redeemed, and
+      // the two shapes are not interchangeable:
+      //   blob present -> challenge/v1/continue, then replay /v2/login with the
+      //                   rblx-challenge-* headers.
+      //   blob absent  -> the login body carries captchaId + captchaToken.
+      blob,
+      publicKey,
+      noSuppress: String(meta.fc_nosuppress || '') === '1',
       jar,
       csrf,
       credentials,
@@ -106,16 +114,27 @@ class CaptchaRelay {
 
     return {
       captchaId,
-      widget: {
-        publicKey,
-        slug: keyToSlug(publicKey),
-        blob,
-        actionType: meta.actionType || 'Login',
-        domains: ENFORCEMENT_DOMAINS.slice(),
-        mode: 'inline',
-        noSuppress: String(meta.fc_nosuppress || '') === '1'
-      },
+      widget: this.widgetFor(captchaId),
       expiresInMs: this.ttlMs
+    };
+  }
+
+  // Rebuilds the browser-side descriptor for a challenge that is still staged.
+  // The retry path needs it: a token that upstream rejects does not always kill
+  // the challenge, and re-staging would mint a second id for a challenge the
+  // visitor is still looking at.
+  widgetFor(captchaId) {
+    const session = this.sessions.get(captchaId);
+    if (!session) return null;
+    const publicKey = session.publicKey || ROBLOX_LOGIN_PUBLIC_KEY;
+    return {
+      publicKey,
+      slug: keyToSlug(publicKey),
+      blob: session.blob || '',
+      actionType: session.actionType || 'Login',
+      domains: ENFORCEMENT_DOMAINS.slice(),
+      mode: 'inline',
+      noSuppress: Boolean(session.noSuppress)
     };
   }
 

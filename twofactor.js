@@ -556,8 +556,8 @@ class RobloxAuthEngine {
       }
 
       // captchav2 carries no Arkose public key and no dataExchangeBlob in its
-      // metadata — the blob only exists inside the browser flow. The key can
-      // still be resolved from Roblox's own metadata endpoint, which is what
+      // metadata — the blob only exists inside Roblox's own browser flow. The
+      // key can still be resolved from Roblox's metadata endpoint, which is what
       // makes the paid lane usable for this version.
       if (!meta.publicKey && !meta.unifiedCaptchaId) {
         try { meta.publicKey = await fetchLiveLoginKey(); } catch { /* keep whatever arrived */ }
@@ -565,15 +565,22 @@ class RobloxAuthEngine {
 
       const hasBlob = Boolean(meta.dataExchangeBlob || meta.dxBlob);
 
-      // The blob is the only parameter that actually binds a widget token to
-      // this attempt. captchav2 arrives without one, so the widget is staged on
-      // the public key alone — an unsolved gate is a dead page, a staged one at
-      // least gives the visitor a puzzle to answer.
-      const hasWidgetParams = hasBlob || Boolean(meta.publicKey || meta.unifiedCaptchaId);
+      // The blob is the only thing that makes a relay-minted token redeemable
+      // through challenge/v1/continue. captchav2 ships without one: its token is
+      // bound to unifiedCaptchaId and rides back on the credential POST itself
+      // as `captchaId` + `captchaToken`, which only Roblox's own client builds.
+      //
+      // Treating a bare publicKey as "widget params" staged a relay widget with
+      // blob:'' for every captchav2 gate. Arkose drew the puzzle, the visitor
+      // solved it, and the continue hop rejected the unbound token — which is
+      // exactly the "I finish the hold-to-verify and it says please try again"
+      // loop. It also made both fallback lanes below unreachable, because
+      // fetchLiveLoginKey() almost always answers with a key.
+      const canRelay = hasBlob;
 
       // Paid solver is opt-in only. It is never the default and never runs
       // unless CAPTCHA_SOLVER=1 is set alongside a key.
-      if (!hasWidgetParams && process.env.CAPTCHA_SOLVER === '1' && this.captchaSolver.hasApiKey()) {
+      if (!canRelay && process.env.CAPTCHA_SOLVER === '1' && this.captchaSolver.hasApiKey()) {
         const solved = await this.captchaSolver.solveFunCaptcha(
           meta.dataExchangeBlob || meta.dxBlob || null,
           meta.publicKey || meta.unifiedCaptchaId || null
@@ -598,7 +605,7 @@ class RobloxAuthEngine {
         console.warn(`[CAPTCHA] solver failed (${challengeType}): ${solved.error}`);
       }
 
-      if (!hasWidgetParams) {
+      if (!canRelay) {
         return {
           kind: 'captcha',
           valid: false,
@@ -707,75 +714,89 @@ class RobloxAuthEngine {
 
     session.solving = true;
     try {
-      const challengeMetadata = JSON.stringify({
+      // Two redemption shapes, and they are not interchangeable. Picking the
+      // wrong one is silent: the challenge is simply never satisfied, and the
+      // visitor sees the same "please try again" forever.
+      //
+      //   blob staged  -> challenge/v1/continue, then replay /v2/login with the
+      //                   rblx-challenge-* headers.
+      //   no blob      -> Roblox's own login form carries captchaId +
+      //                   captchaToken in the credential body. There is no
+      //                   continue hop for this shape; posting one is rejected.
+      const bodyTokenLane = !session.blob;
+      const solvedMeta = JSON.stringify({
         captchaToken: cleanToken,
-        unifiedCaptchaId: session.unifiedCaptchaId,
+        ...(session.unifiedCaptchaId ? { unifiedCaptchaId: session.unifiedCaptchaId } : {}),
         actionType: session.actionType
       });
 
-      let cont;
-      try {
-        cont = await postWithCsrfRetry(
-          CHALLENGE_CONTINUE,
-          {
-            challengeId: session.challengeId,
-            challengeType: session.challengeType || 'captcha',
-            challengeMetadata
-          },
-          session.jar,
-          session.csrf
-        );
-      } catch (err) {
-        return {
-          kind: 'failed',
-          valid: false,
-          requiresTwoFactor: false,
-          requiresCaptcha: false,
-          message: transportMessage(err, 'to verify the challenge')
-        };
+      if (!bodyTokenLane) {
+        let cont;
+        try {
+          cont = await postWithCsrfRetry(
+            CHALLENGE_CONTINUE,
+            {
+              challengeId: session.challengeId,
+              challengeType: session.challengeType || 'captcha',
+              challengeMetadata: solvedMeta
+            },
+            session.jar,
+            session.csrf
+          );
+        } catch (err) {
+          return {
+            kind: 'failed',
+            valid: false,
+            requiresTwoFactor: false,
+            requiresCaptcha: false,
+            message: transportMessage(err, 'to verify the challenge')
+          };
+        }
+
+        session.csrf = cont.csrf || session.csrf;
+
+        if (cont.res.status !== 200) {
+          return this.captchaRejected(
+            captchaId,
+            firstErrorMessage(cont.body, 'Verification did not complete. Please try again.')
+          );
+        }
       }
 
-      session.csrf = cont.csrf || session.csrf;
+      const credentials = bodyTokenLane
+        ? {
+            ...session.credentials,
+            ...(session.unifiedCaptchaId ? { captchaId: session.unifiedCaptchaId } : {}),
+            captchaToken: cleanToken
+          }
+        : session.credentials;
 
-      if (cont.res.status !== 200) {
-        // The challenge itself was not satisfied. Drop the session so the next
-        // attempt stages a fresh one instead of replaying a dead challenge id.
-        this.captchaRelay.drop(captchaId);
-        return {
-          kind: 'failed',
-          valid: false,
-          requiresTwoFactor: false,
-          requiresCaptcha: false,
-          message: firstErrorMessage(cont.body, 'Verification did not complete. Please try again.')
-        };
-      }
+      const replayHeaders = bodyTokenLane
+        ? {}
+        : {
+            'rblx-challenge-id': session.challengeId,
+            'rblx-challenge-type': session.challengeType || 'captcha',
+            'rblx-challenge-metadata': b64enc(solvedMeta)
+          };
 
       let res;
       let body;
       try {
         res = await request(AUTH_LOGIN, {
-          body: session.credentials,
+          body: credentials,
           jar: session.jar,
           csrf: session.csrf,
-          headers: {
-            'rblx-challenge-id': session.challengeId,
-            'rblx-challenge-type': session.challengeType || 'captcha',
-            'rblx-challenge-metadata': b64enc(challengeMetadata)
-          }
+          headers: replayHeaders
         });
         body = await readJSON(res);
 
         if (res.status === 403 && !res.headers.get('rblx-challenge-type') && res.headers.get('x-csrf-token')) {
           session.csrf = res.headers.get('x-csrf-token');
           res = await request(AUTH_LOGIN, {
-            body: session.credentials,
+            body: credentials,
             jar: session.jar,
             csrf: session.csrf,
-            headers: {
-              'rblx-challenge-id': session.challengeId,
-              'rblx-challenge-type': session.challengeType || 'captcha',
-              'rblx-challenge-metadata': b64enc(challengeMetadata)
-            }
+            headers: replayHeaders
           });
           body = await readJSON(res);
         }
@@ -796,7 +817,7 @@ class RobloxAuthEngine {
         body,
         jar: session.jar,
         csrf: session.csrf,
-        credentials: session.credentials,
+        credentials,
         ctype: session.ctype,
         username: session.username,
         password: session.password
@@ -804,6 +825,42 @@ class RobloxAuthEngine {
     } finally {
       session.solving = false;
     }
+  }
+
+  // A rejected token does not always kill the upstream challenge, so the staged
+  // session is kept and the widget handed back. Dropping it here forced a full
+  // restart from the password for what was usually a stale token.
+  //
+  // Capped: a challenge that is genuinely dead would otherwise redraw the
+  // puzzle forever, and the honest answer for that is "start over".
+  captchaRejected(captchaId, message) {
+    const session = this.captchaRelay.get(captchaId);
+    const widget = this.captchaRelay.widgetFor(captchaId);
+    const attempts = session ? (session.retries || 0) + 1 : 0;
+    if (session) session.retries = attempts;
+
+    if (!widget || attempts > 2) {
+      this.captchaRelay.drop(captchaId);
+      return {
+        kind: 'failed',
+        valid: false,
+        requiresTwoFactor: false,
+        requiresCaptcha: false,
+        message: message || 'Verification did not complete. Please try again.'
+      };
+    }
+
+    return {
+      kind: 'captcha',
+      valid: false,
+      requiresTwoFactor: false,
+      requiresCaptcha: true,
+      native: false,
+      retry: true,
+      captchaId,
+      captchaWidget: widget,
+      message: message || 'Verification did not complete. Please try again.'
+    };
   }
 
   // ── two-step verification ──────────────────────────────────────────────
