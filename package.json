@@ -5,7 +5,9 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node index.js",
-    "build": "echo 'no build'"
+    "build": "echo 'no build'",
+    "check": "node scripts/check-route-order.js",
+    "test": "node scripts/check-route-order.js && node --check server.js"
   },
   "dependencies": {
     "@vercel/blob": "^2.9.0",

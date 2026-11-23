@@ -72,11 +72,18 @@ class ProxyRotation {
     }
 
     saveStats() {
-        try {
-            fs.writeFileSync(PROXY_STATS_FILE, JSON.stringify(this.stats, null, 2));
-        } catch (error) {
-            console.error('[PROXY] Error saving stats:', error.message);
-        }
+        // Debounced. Every success/failure used to rewrite the whole stats file
+        // synchronously; two flapping proxies meant continuous disk writes.
+        if (this._saveTimer) return;
+        this._saveTimer = setTimeout(() => {
+            this._saveTimer = null;
+            try {
+                fs.writeFileSync(PROXY_STATS_FILE, JSON.stringify(this.stats, null, 2));
+            } catch (error) {
+                console.error('[PROXY] Error saving stats:', error.message);
+            }
+        }, 500);
+        if (this._saveTimer.unref) this._saveTimer.unref();
     }
 
     getNextProxy() {
@@ -131,10 +138,12 @@ class ProxyRotation {
     }
 
     startRotation() {
-        setInterval(() => {
+        const timer = setInterval(() => {
             this.currentProxyIndex = (this.currentProxyIndex + 1) % this.proxies.length;
             console.log('[PROXY] Rotating proxy');
         }, this.rotationInterval);
+        // A rotation tick is not a reason to keep the process alive.
+        if (timer.unref) timer.unref();
     }
 
     getStats() {

