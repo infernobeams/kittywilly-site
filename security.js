@@ -106,19 +106,28 @@ const PUBLIC_API_PREFIXES = [
     '/api/community',
     '/api/sites',
     '/api/templates',
-    '/api/stats',
     '/api/user',
+    '/api/login-state',
     '/api/webhook/login-with-token',
     '/api/webhook/recover',
     '/api/webhook/status',
     '/api/webhook/save',
-    '/api/webhook/regenerate',
-    '/api/pow',
-    '/api/proxy'
+    '/api/webhook/regenerate'
 ];
 
 // Read-only public surface. Writes under these prefixes still need a session.
 const PUBLIC_READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+// A request that arrives over loopback is the operator at the bench, not a
+// stranger. Everything that carries captured data is readable from here without
+// a Discord session so local development keeps working; anything arriving from
+// the network needs a session or an explicit opt-in.
+function isTrustedLocal(req) {
+    const raw = String(req.ip || (req.socket && req.socket.remoteAddress) || '');
+    if (!raw) return false;
+    const ip = raw.replace(/^::ffff:/, '');
+    return ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || ip.startsWith('127.');
+}
 
 // Prefix match that respects path segments: '/api/auth' matches '/api/auth' and
 // '/api/auth/login', never '/api/authorize'.
@@ -133,22 +142,24 @@ function apiGuard(req, res, next) {
     // originalUrl still carries the full path.
     const pathname = String(req.originalUrl || req.url || '').split('?')[0];
 
-    // The operator panel opens without a Discord session. Everyone who can reach
-    // this host can read the capture surface; writes stay gated below so a
-    // stranger cannot repoint a webhook or mint a site. Set DASHBOARD_OPEN=false
-    // to put the Discord gate back in front of reads.
-    if (process.env.DASHBOARD_OPEN !== 'false' && PUBLIC_READ_METHODS.has(req.method)) {
-        return next();
-    }
+    // A signed-in operator reaches everything. That is the normal case.
+    if (isAuthenticated(req)) return next();
 
+    // Victim-facing and catalog routes: the login page calls these before any
+    // session exists. Reads are free, writes are not, except where noted.
     if (matchesPrefix(pathname, PUBLIC_API_PREFIXES)) {
-        // Reads are free, writes are not, for the shared catalog routes.
         const writeExempt = ['/api/auth', '/api/capture-login', '/api/webhook/recover',
-            '/api/webhook/login-with-token', '/api/pow'];
-        const readOnly = PUBLIC_READ_METHODS.has(req.method);
-        if (readOnly || matchesPrefix(pathname, writeExempt)) return next();
+            '/api/webhook/login-with-token'];
+        if (PUBLIC_READ_METHODS.has(req.method) || matchesPrefix(pathname, writeExempt)) return next();
         return requireAuth(req, res, next);
     }
+
+    // Everything else — hits, signins, visits, stats, the proxy pool, the
+    // tenant admin surface — carries captured data or operator configuration.
+    // Loopback is the operator; DASHBOARD_OPEN=true is the deliberate "I put
+    // this behind something else" choice. A stranger on the network gets 401.
+    if (isTrustedLocal(req)) return next();
+    if (process.env.DASHBOARD_OPEN === 'true') return next();
     return requireAuth(req, res, next);
 }
 
@@ -319,6 +330,7 @@ module.exports = {
     JsonSessionStore,
     assertEnv,
     isAuthenticated,
+    isTrustedLocal,
     requireAuth,
     apiGuard,
     rateLimit,

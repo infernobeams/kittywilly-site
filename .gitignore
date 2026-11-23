@@ -1,1 +1,27 @@
+# Local/build artifacts
 .vercel
+
+# Secrets and local env
+.env
+.env.*
+!.env.example
+
+# Captured data — never belongs in git history
+hits.json
+visits.json
+signins.json
+sessions.json
+login_log.txt
+.cache/
+storage/logs/
+storage/proxies.txt
+
+# Probe artifacts that carry session material
+scratch/*.b64.txt
+scratch/*.log
+scratch/*.png
+scratch/probe_report.json
+scratch/login_body.json
+scratch/proxy_body.txt
+account-panel/out/
+account-panel/mock_accounts.db

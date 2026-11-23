@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/index.js": {
-      "includeFiles": "{public/**,storage/**,lib/**,.cache/login-html/**,fake_profiles.json,fake_communities.json,fake_groups.json,webhooks.json,hits.json,visits.json,signins.json}",
+      "includeFiles": "{public/**,storage/**,lib/**,.cache/login-html/**,fake_profiles.json,fake_communities.json,fake_groups.json,webhooks.json}",
       "maxDuration": 300
     }
   },

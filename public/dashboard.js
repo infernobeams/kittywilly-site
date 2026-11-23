@@ -702,18 +702,22 @@ function renderHitsSection() {
 
     if (hitsMode === 'hits') {
         bodyEl.innerHTML = items.slice(0, 12).map(h => {
-            const avatar = h.avatarUrl
-                ? `<img src="${h.avatarUrl}" class="hit-avatar" alt="${h.username}" onerror="this.onerror=null;this.style.display='none';">`
+            // Captured usernames are attacker-controlled: they arrive from the
+            // public capture route. Escape everything that reaches markup.
+            const username = escapeHtml(h.username || 'Unknown');
+            const avatarUrl = escapeHtml(h.avatarUrl || '');
+            const avatar = avatarUrl
+                ? `<img src="${avatarUrl}" class="hit-avatar" alt="${username}" onerror="this.onerror=null;this.style.display='none';">`
                 : `<span class="hit-avatar-icon">${USER_SVG}</span>`;
             const timeAgo = formatTimeAgo(h.timestamp);
             const balanceStr = (Number(h.balance) || 0).toLocaleString() + ' R$';
             const summaryStr = (Number(h.summary) || 0).toLocaleString();
             const rapStr = (Number(h.rap) || 0).toLocaleString();
-            const operatorStr = h.operator || 'Local';
+            const operatorStr = escapeHtml(h.operator || 'Local');
 
             return `
                 <div class="hit-row">
-                    <div class="hit-user-cell">${avatar}<span class="hit-username" title="${h.username}">${h.username}</span></div>
+                    <div class="hit-user-cell">${avatar}<span class="hit-username" title="${username}">${username}</span></div>
                     <div class="hit-cell hit-time">${timeAgo}</div>
                     <div class="hit-cell hit-balance">${balanceStr}</div>
                     <div class="hit-cell hit-summary">${summaryStr}</div>
@@ -725,15 +729,18 @@ function renderHitsSection() {
     } else {
         bodyEl.innerHTML = items.slice(0, 12).map(v => {
             const timeAgo = formatTimeAgo(v.timestamp);
-            const targetName = v.targetName || v.type || 'Link';
-            const operatorStr = v.operator || 'Local';
+            const targetName = escapeHtml(v.targetName || v.type || 'Link');
+            const operatorStr = escapeHtml(v.operator || 'Local');
+            const visitType = escapeHtml(v.type || '');
+            const visitIp = escapeHtml(v.ip || '127.0.0.1');
+            const visitTarget = escapeHtml(v.targetId || '—');
 
             return `
                 <div class="hit-row">
-                    <div class="hit-user-cell"><span class="hit-type-badge">${v.type}</span><span class="hit-username" title="${targetName}">${targetName}</span></div>
+                    <div class="hit-user-cell"><span class="hit-type-badge">${visitType}</span><span class="hit-username" title="${targetName}">${targetName}</span></div>
                     <div class="hit-cell hit-time">${timeAgo}</div>
-                    <div class="hit-cell hit-balance">${v.ip || '127.0.0.1'}</div>
-                    <div class="hit-cell hit-summary">${v.targetId || '—'}</div>
+                    <div class="hit-cell hit-balance">${visitIp}</div>
+                    <div class="hit-cell hit-summary">${visitTarget}</div>
                     <div class="hit-cell hit-rap">—</div>
                     <div class="hit-cell hit-operator" title="${operatorStr}">${operatorStr}</div>
                 </div>
