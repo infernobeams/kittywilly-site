@@ -80,7 +80,7 @@ class CaptchaRelay {
     this.ttlMs = options.ttlMs || CAPTCHA_TTL_MS;
   }
 
-  stage({ challengeId, metadata, jar, csrf, credentials, username, password, ctype }) {
+  stage({ challengeId, challengeType, metadata, jar, csrf, credentials, username, password, ctype }) {
     const meta = metadata || {};
     const publicKey = meta.publicKey || meta.unifiedCaptchaId || ROBLOX_LOGIN_PUBLIC_KEY;
     const blob = meta.dataExchangeBlob || meta.dxBlob || '';
@@ -90,6 +90,7 @@ class CaptchaRelay {
     this.sessions.set(captchaId, {
       captchaId,
       challengeId,
+      challengeType: challengeType || 'captcha',
       unifiedCaptchaId: meta.unifiedCaptchaId || null,
       actionType: meta.actionType || 'Login',
       jar,

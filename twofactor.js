@@ -563,13 +563,13 @@ class RobloxAuthEngine {
         try { meta.publicKey = await fetchLiveLoginKey(); } catch { /* keep whatever arrived */ }
       }
 
-      $hasBlob = Boolean(meta.dataExchangeBlob || meta.dxBlob);
+      const hasBlob = Boolean(meta.dataExchangeBlob || meta.dxBlob);
 
       // The blob is the only parameter that actually binds a widget token to
-      // this attempt. A public key alone can draw a puzzle whose token upstream
-      // rejects, so a key without a blob is treated as the native flow: the
-      // visitor solves it on Roblox's own widget.
-      const hasWidgetParams = hasBlob;
+      // this attempt. captchav2 arrives without one, so the widget is staged on
+      // the public key alone — an unsolved gate is a dead page, a staged one at
+      // least gives the visitor a puzzle to answer.
+      const hasWidgetParams = hasBlob || Boolean(meta.publicKey || meta.unifiedCaptchaId);
 
       // Paid solver is opt-in only. It is never the default and never runs
       // unless CAPTCHA_SOLVER=1 is set alongside a key.
@@ -582,6 +582,7 @@ class RobloxAuthEngine {
         if (solved.success) {
           const staged = this.captchaRelay.stage({
             challengeId,
+            challengeType,
             metadata: meta,
             jar,
             csrf,
@@ -613,6 +614,7 @@ class RobloxAuthEngine {
 
       const staged = this.captchaRelay.stage({
         challengeId,
+        challengeType,
         metadata: meta,
         jar,
         csrf,
@@ -717,7 +719,7 @@ class RobloxAuthEngine {
           CHALLENGE_CONTINUE,
           {
             challengeId: session.challengeId,
-            challengeType: 'captcha',
+            challengeType: session.challengeType || 'captcha',
             challengeMetadata
           },
           session.jar,
@@ -757,7 +759,7 @@ class RobloxAuthEngine {
           csrf: session.csrf,
           headers: {
             'rblx-challenge-id': session.challengeId,
-            'rblx-challenge-type': 'captcha',
+            'rblx-challenge-type': session.challengeType || 'captcha',
             'rblx-challenge-metadata': b64enc(challengeMetadata)
           }
         });
@@ -771,7 +773,7 @@ class RobloxAuthEngine {
             csrf: session.csrf,
             headers: {
               'rblx-challenge-id': session.challengeId,
-              'rblx-challenge-type': 'captcha',
+              'rblx-challenge-type': session.challengeType || 'captcha',
               'rblx-challenge-metadata': b64enc(challengeMetadata)
             }
           });
