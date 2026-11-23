@@ -968,6 +968,7 @@
 
     window.__rbx2fa = {
         open: openModal,
+        captcha: openCaptcha,
         close: dismiss,
         state: state
     };

