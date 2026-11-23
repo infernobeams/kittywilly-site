@@ -5,8 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const SITES_DIR = path.join(__dirname, 'storage', 'sites');
-const SITES_CONFIG = path.join(__dirname, 'storage', 'sites.json');
+const R = require('./lib/runtime');
+
+const SITES_DIR = R.dataPath('storage', 'sites');
+const SITES_CONFIG = R.dataPath('storage', 'sites.json');
 
 class SiteGenerator {
     constructor() {

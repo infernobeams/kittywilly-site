@@ -5,8 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 
+const R = require('./lib/runtime');
+
 const PROXY_FILE = path.join(__dirname, 'storage', 'proxies.txt');
-const PROXY_STATS_FILE = path.join(__dirname, 'storage', 'proxy-stats.json');
+const PROXY_STATS_FILE = R.seededDataPath('storage', 'proxy-stats.json');
 
 class ProxyRotation {
     constructor(options = {}) {

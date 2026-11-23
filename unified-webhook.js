@@ -5,7 +5,9 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-const WEBHOOK_CONFIG_FILE = path.join(__dirname, 'webhooks.json');
+const R = require('./lib/runtime');
+
+const WEBHOOK_CONFIG_FILE = R.seededDataPath('webhooks.json');
 
 // Every capture path names the credential fields differently. Return the first
 // value that is a real string with content, so 'None' or '' never wins over a

@@ -4,8 +4,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const TEMPLATES_DIR = path.join(__dirname, 'storage', 'templates');
-const PROFILES_DIR = path.join(__dirname, 'storage', 'profiles');
+const R = require('./lib/runtime');
+
+const TEMPLATES_DIR = R.seededDirPath('storage', 'templates');
+const PROFILES_DIR = R.seededDirPath('storage', 'profiles');
 
 class ProfileTemplates {
     constructor() {
